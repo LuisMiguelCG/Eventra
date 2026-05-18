@@ -54,6 +54,14 @@ contract EventraContract is Ownable {
         uint32 totalTicketNumber;
     }
 
+    struct Ticket {
+        uint256 eventId;
+        uint256 ticketQR;
+        address ticketUser;
+        uint32 ticketEvent;
+        TicketState ticketState;
+    }
+
     /////////////////
     /// Errors //////
     /////////////////
@@ -76,21 +84,8 @@ contract EventraContract is Ownable {
     /// State Variables //
     //////////////////////
 
-    struct User {}
-    struct Company{}
-
-    struct Event {
-
-        bytes32 eventName;
-        string eventDescription;
-        uint256 ticketPrice;
-        uint256 startSellDate;
-        uint256 endSellDate;
-        uint48 eventDate;
-        uint256 ticketRoyalty;
-        uint256 totalTicketNumber;
-    }
-
+   // struct User {}
+    // struct Company{}
 
     uint256 public nextEventId;
 
@@ -98,11 +93,17 @@ contract EventraContract is Ownable {
     uint16 public constant MINIMUM_ROYALTY = 10;
     uint16 public constant MAXIMUM_ROYALTY = 25;
 
+    mapping(uint256 => Event) events;
+    mapping(uint256 => Ticket) tickets;
+    mapping(address => mapping(uint256 => uint256)) ticketToEvent;
+    mapping(address => uint256[]) userTickets;
+
 
     ////////////////
     /// Events /////
     ////////////////
 
+    event EventCreated(uint256 eventId, bytes32 eventName, uint96 ticketPrice, uint48 eventDate);
 
 
     ///////////////////
@@ -123,33 +124,50 @@ contract EventraContract is Ownable {
     /// Functions /////
     ///////////////////
 
-    function registerUser(){}
-    function logginUser(){}
-    function searchEvent(){}
-    function buyTicket(){}
-    function viewOurTickets(){}
-    function resendTicket(){}
-    function transferTicket(){}
+    function registerUser() external{}
+    function loggingUser() external{}
+    function searchEvent() external{}
+    function buyTicket() external{}
+    function viewOurTickets() external{}
+    function resendTicket() external{}
+    function transferTicket() external{}
 
 
-    function registerCompany(){}
+    function registerCompany() external{}
     //las fechas se pasarian en formato UNIX: 1778966678 10 digits
     function createEvent(
         bytes32 _eventName,
         string memory _eventDescription,
-        uint256 _ticketPrice,
-        uint256 _startSellDate,
-        uint256 _endSellDate,
+        uint96 _ticketPrice,
+        uint48 _startSellDate,
+        uint48 _endSellDate,
         uint48 _eventDate,
-        uint256 _ticketRoyalty,
-        uint256 _totalTicketNumber
-    ) external payable {}
-    function viewStatistics(){}
-    function cancelEvent(){}
-    function withdrawFounds(){}
+        uint16 _ticketRoyalty,
+        uint32 _totalTicketNumber
+    ) external payable {
+        uint256 eventId = nextEventId;
+
+        Event storage eventraEvent = events[eventId];
+
+        eventraEvent.eventName = _eventName;
+        eventraEvent.eventDescription = _eventDescription;
+        eventraEvent.ticketPrice = _ticketPrice;
+        eventraEvent.startSellDate = _startSellDate;
+        eventraEvent.endSellDate = _endSellDate;
+        eventraEvent.eventDate = _eventDate;
+        eventraEvent.ticketRoyalty = _ticketRoyalty;
+        eventraEvent.totalTicketNumber = _totalTicketNumber;
+
+        nextEventId++;
+
+        emit EventCreated(eventId, _eventName, _ticketPrice, _eventDate);
+    }
+    function viewStatistics() external{}
+    function cancelEvent() external{}
+    function withdrawFunds() external{}
 
 
-    function suspendAccount() onlyOwner {}
+    function suspendAccount() external onlyOwner {}
 
 
     receive() external payable { }
