@@ -242,7 +242,7 @@ contract EventraContract is ERC721, Ownable {
         uint16 _ticketRoyalty,
         uint32 _totalTicketNumber
     ) external payable {
-        if (msg.value != EVENT_DEPOSIT) revert InvalidAmount();
+        if (msg.value != EVENT_DEPOSIT) revert InvalidAmount(msg.value, EVENT_DEPOSIT);
         if (msg.sender != companies[msg.sender].addr) revert Unauthorized("Not Company");
         if (bytes(_eventName).length == 0) revert InvalidArgument("Invalid Event Name");
         if (_ticketPrice == 0) revert InvalidArgument("Invalid Ticket Price");
