@@ -143,6 +143,14 @@ contract EventraContract is ERC721, Ownable {
     // User Address => Lista[TokenIds] vinculados al User Address.
     mapping(address => uint256[]) public userTickets;
 
+
+    mapping(uint256 => Ticket) tickets; // QUESTION: why this var and ticketToEvent?
+    // mapping(address => mapping(uint256 => uint256)) ticketToEvent; // OXXXX[1][1]
+    
+    
+    // User Address => Lista[TokenIds] vinculados al User Address.
+    mapping(address => uint256[]) userTickets;
+    
     ////////////////
     /// Events /////
     ////////////////
