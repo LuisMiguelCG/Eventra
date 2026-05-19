@@ -10,7 +10,7 @@ import "@openzeppelin/contracts/access/Ownable.sol"; /*TODO: Ya existe la librer
   https://docs.openzeppelin.com/contracts/5.x/api/access#AccessControl
 */
 
-contract EventraContract is Ownable {
+contract EventraContract is ERC721, Ownable {
     /* Actualmente no está implementado, si hay tiempo se puede considerar
 
     enum CompanyVerificationState {
@@ -110,19 +110,44 @@ contract EventraContract is Ownable {
     /// State Variables //
     //////////////////////
 
-    uint256 public nextEventId;
-
     uint256 public constant EVENT_DEPOSIT = 1 ether;
     uint16 public constant MINIMUM_ROYALTY = 10;
     uint16 public constant MAXIMUM_ROYALTY = 25;
 
+
+    uint256 public nextEventId;
+    // Variable para controlar el id del NFT. Se usa para crear
+    uint256 public nextTokenId;
+
+
     mapping(uint256 => Event) events; // EventId => Event struct
-    mapping(uint256 => Ticket) tickets; // QUESTION: why this var and ticketToEvent?
-    mapping(address => mapping(uint256 => uint256)) ticketToEvent; // OXXXX[1][1]
-    mapping(address => uint256[]) userTickets;
+    mapping(uint256 => string) public eventBaseURI; //EventId => URI base del evento
+    // QUESTION: no se cómo de necesario es esto.
+
+    // EventId => numero de tickets vendidos. Se inicializa a 0.
+    mapping(uint256 => uint32) tickets_sold;
+
+    /* EventId => Lista[TokenIds] que pertenecen al evento EventId.
+    Usado para:
+    1. Al cancelar un evento, cancelar todos los tickets a la vez.
+    2. Mostrar estadísticas a Company
+    3. En frontend poder gestionar los tickets de un evento
+    */
+    mapping(uint256 => uint256[]) event_tickets;
+    // OTRA OPCION: codificar el eventId dentro del propio tokenId
+
+
     mapping(address => Company) companies;
     mapping(address => uint256[]) companyEvents; // QUESTION: Is it necessary? Event has address atb in the struct ...
 
+
+    mapping(uint256 => Ticket) tickets; // QUESTION: why this var and ticketToEvent?
+    // mapping(address => mapping(uint256 => uint256)) ticketToEvent; // OXXXX[1][1]
+    
+    
+    // User Address => Lista[TokenIds] vinculados al User Address.
+    mapping(address => uint256[]) userTickets;
+    
     ////////////////
     /// Events /////
     ////////////////
