@@ -98,20 +98,22 @@ contract EventraContract is Ownable {
     uint16 public constant MINIMUM_ROYALTY = 10;
     uint16 public constant MAXIMUM_ROYALTY = 25;
 
-    mapping(uint256 => Event) events;
-    mapping(uint256 => Ticket) tickets;
-    mapping(address => mapping(uint256 => uint256)) ticketToEvent; // OXXXX[1][1]
-    mapping(address => uint256[]) userTickets;
-    mapping(address => Company) companies;
-    mapping(address => uint256[]) companyEvents;
+    mapping(uint256 => Event) public events;
+    mapping(uint256 => Ticket) public tickets;
+    mapping(address => mapping(uint256 => uint256)) public ticketToEvent;
+    mapping(address => uint256[]) public userTickets;
+    mapping(address => Company) public companies;
+    mapping(address => uint256[]) public companyEvents;
 
     ////////////////
     /// Events /////
     ////////////////
 
-    event EventCreated(uint256 eventId, string eventName, uint96 ticketPrice, uint48 eventDate);
-    event EventCanceled(uint256 eventId, string eventName, uint96 ticketPrice, uint48 eventDate);
-    event EventFundsWithdrawn(uint256 eventId, string eventName); //HABRIA QUE VER COMO SE LE PASA EL DINERO OBTENIDO
+    event EventCreated(uint256 indexed eventId, string indexed eventName, uint96 ticketPrice, uint48 indexed eventDate);
+    event EventCanceled(
+        uint256 indexed eventId, string indexed eventName, uint96 ticketPrice, uint48 indexed eventDate
+    );
+    event EventFundsWithdrawn(uint256 indexed eventId, string indexed eventName); //HABRIA QUE VER COMO SE LE PASA EL DINERO OBTENIDO
 
     ///////////////////
     /// Constructor ///
@@ -134,6 +136,8 @@ contract EventraContract is Ownable {
     function resendTicket() external { }
     function transferTicket() external { }
 
+    //DEBERIAMOS BORRAR ESTO
+    /*
     function registerCompany(string memory _companyName, address _addr) external {
         if (bytes(_companyName).length == 0) revert InvalidArgument("Invalid Company Name");
         // if (_phoneNumber == bytes16(0)) revert InvalidArgument("Invalid Phone Number");
@@ -141,6 +145,7 @@ contract EventraContract is Ownable {
 
         companies[_addr] = Company({ companyName: _companyName, addr: _addr });
     }
+    */
 
     //las fechas se pasarian en formato UNIX: 1234567890 10 digits
     function createEvent(
@@ -154,7 +159,6 @@ contract EventraContract is Ownable {
         uint32 _totalTicketNumber
     ) external payable {
         if (msg.value != EVENT_DEPOSIT) revert InvalidAmount();
-        if (msg.sender != companies[msg.sender].addr) revert Unauthorized("Not Company");
         if (bytes(_eventName).length == 0) revert InvalidArgument("Invalid Event Name");
         if (_ticketPrice == 0) revert InvalidArgument("Invalid Ticket Price");
         if (_startSellDate <= block.timestamp) revert InvalidArgument("Invalid Start Time");
