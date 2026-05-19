@@ -76,7 +76,7 @@ contract EventraContract is ERC721, Ownable {
 
     struct Ticket {
         uint256 eventId;
-        uint256 ticketQR; // QUESTION: How is this stored?
+        // uint256 ticketQR; // QUESTION: How is this stored?
         address ticketUser; // owner of the ticket. Initially the Company.
         TicketState ticketState;
         // HAY QUE CREAR PRIMERO EL TICKET Y LUEGO VER COMO SE RELACIONA CON EL EVENTO Y LOS FONDOS
@@ -93,7 +93,7 @@ contract EventraContract is ERC721, Ownable {
     /////////////////
 
     error InvalidArgument(string argument);
-    error InvalidAmount();
+    error InvalidAmount(uint256 sent, uint256 required);
     error TicketNotFound();
     error EventNotFound();
     error InvalidEventState();
@@ -125,7 +125,7 @@ contract EventraContract is ERC721, Ownable {
     // QUESTION: no se cómo de necesario es esto.
 
     // EventId => numero de tickets vendidos. Se inicializa a 0.
-    mapping(uint256 => uint32) tickets_sold;
+    mapping(uint256 => uint32) ticketsSold;
 
     /* EventId => Lista[TokenIds] que pertenecen al evento EventId.
     Usado para:
@@ -133,7 +133,7 @@ contract EventraContract is ERC721, Ownable {
     2. Mostrar estadísticas a Company
     3. En frontend poder gestionar los tickets de un evento
     */
-    mapping(uint256 => uint256[]) event_tickets;
+    mapping(uint256 => uint256[]) eventTickets;
     // OTRA OPCION: codificar el eventId dentro del propio tokenId
 
 
@@ -155,6 +155,9 @@ contract EventraContract is ERC721, Ownable {
     event EventCreated(uint256 eventId, string eventName, uint96 ticketPrice, uint48 eventDate);
     event EventCanceled(uint256 eventId, string eventName, uint96 ticketPrice, uint48 eventDate);
     event EventFundsWithdrawn(uint256 eventId, string eventName); //HABRIA QUE VER COMO SE LE PASA EL DINERO OBTENIDO
+    
+    event TicketSold(uint256 eventId, uint256 tokenId, address indexed buyer, uint96 price);
+
 
     ///////////////////
     /// Constructor ///
@@ -162,6 +165,7 @@ contract EventraContract is ERC721, Ownable {
 
     constructor(address _owner) payable Ownable(_owner) {
         nextEventId = 1;
+        nextTokenId = 1;
     }
 
     ///////////////////
@@ -173,7 +177,46 @@ contract EventraContract is ERC721, Ownable {
     function loggingUser() external { }
     function searchEvent(uint256 eventId) external { }
 
-    function buyTicket() external { } //IMPLEMENTAR UN eventFunds++ el msg.value
+    function buyTicket(uint256 _eventId) external payable{ 
+        if (_eventId == 0 || _eventId >= nextEventId) revert EventNotFound();
+
+        Event storage ev = events[_eventId];
+
+        if(ev.eventState == EventState.SoldOut) revert InvalidEventState();
+
+        if(block.timestamp > ev.endSellDate) revert SalesClosed();
+        if(block.timestamp < ev.startSellDate) revert SalesClosed();
+
+        if(msg.value != ev.ticketPrice) revert InvalidAmount(msg.value, ev.ticketPrice);
+        
+
+        uint256 tokenId = nextTokenId;
+        nextTokenId += 1;
+
+        tickets[tokenId] = Ticket({
+            eventId: _eventId,
+            ticketUser: msg.sender,
+            ticketState: TicketState.Active
+        });
+
+        // Vincula Ticket(TokenId) a Evento
+        eventTickets[_eventId].push(tokenId);
+        // Vincula Ticket(TokenId) a Usuario
+        userTickets[msg.sender].push(tokenId);
+        // Suma 1 a la cantidad de tickets del evento vendido.
+        ticketsSold[_eventId] += 1;
+
+        // Si se han vendido todos los tickets => el evento pasa a sold out
+        if(ticketsSold[_eventId] == ev.totalTicketNumber) ev.eventState = EventState.SoldOut;
+
+
+        ev.eventFunds += msg.value;
+
+        _safeMint(msg.sender, tokenId);
+
+        
+        emit TicketSold(_eventId, tokenId, msg.sender, ev.ticketPrice);
+    } //IMPLEMENTAR UN eventFunds++ el msg.value
     
     function viewOurTickets() external { }
     function resendTicket() external { }
