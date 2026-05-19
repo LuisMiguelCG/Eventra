@@ -4,7 +4,7 @@ pragma solidity ^0.8.20;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol"; /*TODO: Echarle un ojo a las extensiones por si necesitamos alguna  https://docs.openzeppelin.com/contracts/5.x/api/token/erc721*/
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol"; /*TODO: No se cual es la que debemos usar exactamente */
 import "@openzeppelin/contracts/access/Ownable.sol"; /*TODO: Ya existe la libreria asique no nos compliquemos  https://docs.openzeppelin.com/contracts/5.x/api/access#Ownable*/
-
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol"; /*Propuesta por chatgpt para cuando hay retirada de fondos*/
 /*PODEMOS USAR TAMBIEN UNA LIB PARA EL CONTROL DE ACCESO QUE DA ROLES, ASI PODEMOS ASEGURAR QUE LAS FUNCIONES UNICAS DE USUARIO, EMPRESA, ADMIN SE USAN UNICAMENTE SI ESAS ADDRS SON ESE ROL
   https://docs.openzeppelin.com/contracts/5.x/access-control
   https://docs.openzeppelin.com/contracts/5.x/api/access#AccessControl
@@ -66,7 +66,6 @@ contract EventraContract is Ownable {
 
     struct Company {
         string companyName;
-        // bytes16 phoneNumber; REVISAR POR SEGURIDAD GUARDAR INFORMACION COMO EL TELF EN LA BLOCKCHAIN, SERIA MEJOR BORRARLO
         address addr;
     }
 
@@ -77,7 +76,7 @@ contract EventraContract is Ownable {
     error InvalidArgument(string argument);
     error InvalidAmount();
     error TicketNotFound();
-    error EventNotFound();
+    error EventNotFound(uint256 eventId);
     error InvalidEventState();
     error InvalidTicketState();
     error SalesClosed();
@@ -86,7 +85,7 @@ contract EventraContract is Ownable {
     error PayoutAlreadyPaid();
     error InvalidAddress();
     error NotValidPayout();
-    error TransferFailed();
+    error TransferFailed(address to, uint256 amount);
 
     //////////////////////
     /// State Variables //
@@ -109,9 +108,29 @@ contract EventraContract is Ownable {
     /// Events /////
     ////////////////
 
+    event EventCompanyRegistered(string companyName, address companyAddress);  // TIENE SENTIDO??
     event EventCreated(uint256 eventId, string eventName, uint96 ticketPrice, uint48 eventDate);
     event EventCanceled(uint256 eventId, string eventName, uint96 ticketPrice, uint48 eventDate);
     event EventFundsWithdrawn(uint256 eventId, string eventName); //HABRIA QUE VER COMO SE LE PASA EL DINERO OBTENIDO
+
+    /////////////////
+    /// Modifiers ///
+    /////////////////
+
+    modifier eventExists(uint256 _eventId) {
+        if (events[_eventId].organizer == address(0)) {
+            revert EventNotFound(_eventId);
+        }
+        _;
+    }
+
+    modifier onlyEventOrganizer(uint256 _eventId) {
+        if (events[_eventId].organizer != msg.sender) {
+            revert Unauthorized("Not Event Organizer");
+        }
+        _;
+    }
+
 
     ///////////////////
     /// Constructor ///
@@ -136,10 +155,11 @@ contract EventraContract is Ownable {
 
     function registerCompany(string memory _companyName, address _addr) external {
         if (bytes(_companyName).length == 0) revert InvalidArgument("Invalid Company Name");
-        // if (_phoneNumber == bytes16(0)) revert InvalidArgument("Invalid Phone Number");
         if (_addr == address(0)) revert InvalidArgument("Invalid Company Address");
 
         companies[_addr] = Company({ companyName: _companyName, addr: _addr });
+
+        emit EventCompanyRegistered(_companyName, _addr);
     }
 
     //las fechas se pasarian en formato UNIX: 1234567890 10 digits
@@ -188,9 +208,11 @@ contract EventraContract is Ownable {
         emit EventCreated(eventId, _eventName, _ticketPrice, _eventDate);
     }
 
-    function viewStatistics(uint256 eventId) //VIABLE APLICAR UN PERMISO DE SOLO EVENTCOMPANY O SI CON EL IF ACTUAL SIRVE
+    function viewStatistics(uint256 eventId) 
         external
         view
+        eventExists(eventId)
+        onlyEventOrganizer(eventId)
         returns (
             string memory _eventName,
             string memory _eventDescription,
@@ -202,10 +224,7 @@ contract EventraContract is Ownable {
             uint32 _totalTicketNumber
         )
     {
-        if (eventId == 0) revert EventNotFound();
-
-        Event storage eventra = events[eventId];
-        if (msg.sender != eventra.organizer) revert Unauthorized("Invalid user");
+        Event storage eventra = events[eventId];  
 
         return (
             eventra.eventName,
@@ -219,43 +238,37 @@ contract EventraContract is Ownable {
         );
     }
 
-    function cancelEvent(uint256 eventId) external {
-        //VIABLE APLICAR UN PERMISO DE SOLO EVENTCOMPANY
-        //REVISAR SI QUEREMOS APLICAR DELETE O MANTENER EL EVENTO CANCELADO EN EL MAPPING
+    function cancelEvent(uint256 eventId) external eventExists(eventId) onlyEventOrganizer(eventId) {
+        if (eventId >= nextEventId) revert EventNotFound(eventId);  //TIENE SENTIDO?? SE PUEDE TENER UN ID MAYOR???
 
-        if (eventId == 0 || eventId >= nextEventId) revert EventNotFound();
+        Event storage eventra = events[eventId];                                    // SOLO FINALIZAMOS EVENTO AL RETIRAR FONDOS, PERO Y SI EL EVENTO HA TERMINADO Y SE
+        if (eventra.eventState != EventState.Active) revert InvalidEventState();    // LE DA CANCELAR??
+        if (block.timestamp > eventra.eventDate) revert InvalidEventState(); 
+        eventra.eventState = EventState.Canceled;                                 
 
-        Event storage eventra = events[eventId];
-
-        if (msg.sender != eventra.organizer) revert Unauthorized("Invalid user");
-
-        if (eventra.startSellDate >= block.timestamp) revert InvalidArgument("Invalid Start Time");
-        if (eventra.endSellDate <= block.timestamp) revert InvalidArgument("Invalid End Time");
-
-        if (eventra.eventState != EventState.Active) revert InvalidEventState();
-
-        eventra.eventState = EventState.Canceled;
+        // if (block.timestamp <= events[eventId].startSellDate - 1 days) SE DEVUELVE LA PASTA
+        bool isSellPeriod = eventra.startSellDate <= block.timestamp && eventra.endSellDate >= block.timestamp;  //SE PUEDE AÑADIR UNA POLITICA DE QUE PARA RECUPERAR LA PASTA
+        if (!isSellPeriod) {                                                                                     // HAYA QUE CANCELAR 1 DIA (O LO QUE SEA) ANTES DEL SELL PERIOD   
+            (bool ok,) = msg.sender.call{ value: EVENT_DEPOSIT }("");
+            if (!ok) revert TransferFailed(msg.sender, EVENT_DEPOSIT);
+        }
 
         emit EventCanceled(eventId, eventra.eventName, eventra.ticketPrice, eventra.eventDate);
     }
 
-    function withdrawFunds(uint256 eventId) external {
-        //VIABLE APLICAR UN PERMISO DE SOLO EVENTCOMPANY
-
-        if (eventId == 0) revert EventNotFound();
+    function withdrawFunds(uint256 eventId) external eventExists(eventId) onlyEventOrganizer(eventId) {
 
         Event storage eventra = events[eventId];
-
-        if (msg.sender != eventra.organizer) revert Unauthorized("Invalid user");
-        if (eventra.eventState != EventState.Finished) revert InvalidEventState();
+        if (eventra.eventState != EventState.Finished) revert InvalidEventState();      // ESTO NO ESTA BIEN, SOLO SE FINALIZA EL EVENTO AQUI, ASIQUE SIEMPRE VA A REVERTIR
 
         eventra.eventState = EventState.Finished;
 
         (bool ok,) = msg.sender.call{ value: eventra.eventFunds }(""); //DEFINIR QUE SE PAGA
-        if (!ok) revert TransferFailed();
+        if (!ok) revert TransferFailed(msg.sender, eventra.eventFunds);
 
         emit EventFundsWithdrawn(eventId, eventra.eventName);
     }
 
     function suspendAccount() external onlyOwner { }
+
 }
