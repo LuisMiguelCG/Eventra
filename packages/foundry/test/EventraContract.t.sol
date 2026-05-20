@@ -8,9 +8,26 @@ contract EventraTests is Test {
     EventraContract internal eventra;
     address internal owner = makeAddr("owner");
     address internal buyer = makeAddr("buyer");
+    address internal buyer2 = makeAddr("buyer2");
+
     address internal eventCompany = makeAddr("eventCompany");
+    address internal eventCompany2 = makeAddr("eventCompany2");
 
     event EventCreated(uint256 indexed eventId, string indexed eventName, uint96 ticketPrice, uint48 indexed eventDate);
+
+    error InvalidArgument(string argument);
+    error InvalidAmount(uint256 sent, uint256 required);
+    error TicketNotFound();
+    error EventNotFound(uint256 eventId);
+    error InvalidEventState();
+    error InvalidTicketState();
+    error SalesClosed();
+    error Unauthorized(string argument);
+    error PayoutNotActiveYet();
+    error PayoutAlreadyPaid();
+    error InvalidAddress();
+    error NotValidPayout();
+    error TransferFailed(address to, uint256 amount);
 
     string internal testEventName = "TEST";
     string internal testEventDescription = "TEST DESCRIPTION";
@@ -76,11 +93,189 @@ contract EventraTests is Test {
         assertEq(uint256(eventState), uint256(EventraContract.EventState.Active));
     }
 
-    function test_buyTicketHappyPath() private { }
+    function test_createEventWrongDeposit() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidAmount.selector);
 
-    function test_cancelEvent() private { }
+        eventra.createEvent{ value: 0.1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
 
-    function test_suspendAccount() private { }
+    function test_createEventWrongName() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
 
-    function test_registerUser() private { }
+        eventra.createEvent{ value: 1 ether }(
+            "",
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventWrongDescription() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            "",
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventWrongTicketPrice() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            0,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventWrongStartSellDate() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            uint48(block.timestamp),
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventWrongEndSellDate() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            uint48(block.timestamp),
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventWrongEventDate() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            uint48(block.timestamp),
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventRoyaltyBelowMinimum() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            9,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventRoyaltyAboveMaximum() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            26,
+            testTotalTicketNumber
+        );
+    }
+
+    function test_createEventWrongTotalTicketNumber() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(InvalidArgument.selector);
+
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            0
+        );
+    }
+
+    function test_viewStatisticsWrongOrganizer() public {
+        vm.prank(eventCompany);
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber
+        );
+        vm.stopPrank();
+
+        vm.prank(eventCompany2);
+
+        vm.expectPartialRevert(Unauthorized.selector);
+        eventra.viewStatistics(1);
+    }
+
+    function test_viewStatisticsWrongEvent() public {
+        vm.prank(eventCompany);
+        vm.expectPartialRevert(EventNotFound.selector);
+        eventra.viewStatistics(100);
+    }
 }
