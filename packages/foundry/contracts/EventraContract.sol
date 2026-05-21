@@ -160,7 +160,7 @@ contract EventraContract is ERC721, Ownable {
     event EventCompanyRegistered(string companyName, address companyAddress); // TIENE SENTIDO??
     event EventCreated(uint256 indexed eventId, string indexed eventName, uint96 ticketPrice, uint48 indexed eventDate);
     event EventCanceled(uint256 indexed eventId, string indexed eventName, uint96 ticketPrice, uint48 indexed eventDate);
-    event EventFundsWithdrawn(uint256 indexed eventId, string indexed eventName); //HABRIA QUE VER COMO SE LE PASA EL DINERO OBTENIDO
+    event EventFundsWithdrawn(uint256 indexed eventId, string indexed eventName, uint256 amount); //HABRIA QUE VER COMO SE LE PASA EL DINERO OBTENIDO
     event EventSoldOut(uint256 indexed eventId, string indexed eventName);
     event TicketSold(uint256 indexed eventId, uint256 indexed tokenId, address indexed buyer, uint96 price);
 
@@ -402,7 +402,7 @@ contract EventraContract is ERC721, Ownable {
         (bool ok,) = msg.sender.call{ value: amount }(""); 
         if (!ok) revert TransferFailed(msg.sender, amount);
 
-        emit EventFundsWithdrawn(eventId, amount);
+        emit EventFundsWithdrawn(eventId, eventra.eventName, amount);
     }
 
     function suspendAccount() external onlyOwner { }
