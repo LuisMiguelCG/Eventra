@@ -73,6 +73,8 @@ contract EventraContract is ERC721, Ownable {
         address organizer; // EventCompany address
         uint256 eventFunds;
         uint32 ticketsSold; // Number of tickets sold. Initially 0.
+        uint8 maxTicketsPerAddress;
+        uint8 maxNumberOfOwners;
         EventState eventState;
     }
 
@@ -80,6 +82,7 @@ contract EventraContract is ERC721, Ownable {
         uint256 eventId;
         // uint256 ticketQR; // QUESTION: How is this stored?
         address ticketUser; // owner of the ticket. Initially the Company.
+        uint8 numberOfOwners;
         TicketState ticketState;
         // HAY QUE CREAR PRIMERO EL TICKET Y LUEGO VER COMO SE RELACIONA CON EL EVENTO Y LOS FONDOS
     }
