@@ -73,6 +73,8 @@ contract EventraContract is ERC721, Ownable {
         address organizer; // EventCompany address
         uint256 eventFunds;
         uint32 ticketsSold; // Number of tickets sold. Initially 0.
+        uint8 maxTicketsPerAddress;
+        uint8 maxNumberOfOwners;
         EventState eventState;
     }
 
@@ -80,6 +82,7 @@ contract EventraContract is ERC721, Ownable {
         uint256 eventId;
         // uint256 ticketQR; // QUESTION: How is this stored?
         address ticketUser; // owner of the ticket. Initially the Company.
+        uint8 numberOfOwners;
         TicketState ticketState;
         // HAY QUE CREAR PRIMERO EL TICKET Y LUEGO VER COMO SE RELACIONA CON EL EVENTO Y LOS FONDOS
     }
@@ -107,6 +110,8 @@ contract EventraContract is ERC721, Ownable {
     error EventNotActive(uint256 eventId);
     error EventIsSoldOut(uint256 eventId);
     error EventCancelled(uint256 eventId);
+
+    error TicketTransferFailed();
 
     //////////////////////
     /// State Variables //
@@ -233,7 +238,8 @@ contract EventraContract is ERC721, Ownable {
             uint48 _startSellDate,
             uint48 _endSellDate,
             uint48 _eventDate,
-            uint32 _ticketsLeft
+            uint32 _ticketsLeft,
+            uint8 _maxTicketsPerAddress
         )
     {
         Event storage eventra = events[eventId];
@@ -245,11 +251,26 @@ contract EventraContract is ERC721, Ownable {
             eventra.startSellDate,
             eventra.endSellDate,
             eventra.eventDate,
-            eventra.totalTicketNumber - eventra.ticketsSold
+            eventra.totalTicketNumber - eventra.ticketsSold,
+            eventra.maxTicketsPerAddress
         );
     }
 
+    function checkNumberOfTicketsOfUserForOneEvent(uint256 _eventId, address _user) private view returns (uint8 _numberOfTickets) {
+        uint256[] memory temp = userTickets[_user];
+        uint8 ticketsOfUserForEvent = 0;
+        for (uint256 i = 0; i < temp.length; i++) {
+            uint256 ticket = temp[i];
+            if (tickets[ticket].eventId == _eventId) {
+                ticketsOfUserForEvent += 1;
+            }
+        }
+        return ticketsOfUserForEvent;
+    }
+
     function buyTicket(uint256 _eventId) external payable eventExists(_eventId) onlyActivedEvent(_eventId) {
+        
+        if(users[msg.sender] == false) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
         Event storage eventra = events[_eventId];
         if (eventra.eventState == EventState.SoldOut) revert EventIsSoldOut(_eventId);
         if (block.timestamp > eventra.endSellDate || block.timestamp < eventra.startSellDate) {
@@ -257,10 +278,14 @@ contract EventraContract is ERC721, Ownable {
         }
         if (msg.value != eventra.ticketPrice) revert InvalidAmount(msg.value, eventra.ticketPrice);
 
+        if (checkNumberOfTicketsOfUserForOneEvent(_eventId, msg.sender) == eventra.maxTicketsPerAddress) {
+            revert Unauthorized("You reached the max number of tickets you can buy for this event.");
+        }
+
         uint256 tokenId = nextTokenId;
         nextTokenId++;
 
-        tickets[tokenId] = Ticket({ eventId: _eventId, ticketUser: msg.sender, ticketState: TicketState.Active });
+        tickets[tokenId] = Ticket({ eventId: _eventId, ticketUser: msg.sender, numberOfOwners: 1, ticketState: TicketState.Active });
 
         // Vincula Ticket(TokenId) a Evento
         eventTickets[_eventId].push(tokenId);
@@ -283,7 +308,45 @@ contract EventraContract is ERC721, Ownable {
 
     function viewOurTickets() external { }
     function resendTicket() external { }
-    function transferTicket() external { }
+
+    function deleteTicketFromUser(address _user, uint256 _ticket) private returns (bool _ok) {
+        uint256[] storage userList = userTickets[_user];
+        uint256 len = userList.length;
+
+        for (uint256 i = 0; i < len; i++) {
+            if (userList[i] == _ticket) {
+                userList[i] = userList[len - 1];
+                userList.pop();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    function transferTicket(address _to, uint256 _ticketId) external {
+        if(!users[msg.sender]) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
+        if(!users[_to]) revert Unauthorized("Destination is not an user of Eventra. Please be sure the account is an Eventra's user");
+
+        Ticket storage ticket = tickets[_ticketId];
+        if(ticket.ticketUser != msg.sender) revert TicketNotFound();
+        if(checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, _to) == events[ticket.eventId].maxTicketsPerAddress) {
+            revert Unauthorized("Destination reached the max number of tickets it can get for this event.");
+        }
+
+        if(ticket.ticketState != TicketState.Active) revert InvalidTicketState();
+        
+        Event storage ev = events[ticket.eventId];
+        if(ev.eventState != EventState.Active && ev.eventState != EventState.SoldOut) revert InvalidEventState();
+
+        tickets[_ticketId].ticketUser = _to;
+
+        bool ok = deleteTicketFromUser(msg.sender, _ticketId);
+        if (!ok) revert TicketTransferFailed();
+        userTickets[_to].push(_ticketId);
+
+        _safeTransfer(msg.sender, _to, _ticketId);
+    }
 
     function registerCompany(string memory _companyName, address _addr) external {
         // SI QUIERES BORRAR ESTO, COMO TE ASEGURAS DE QUE SOLO
@@ -304,7 +367,9 @@ contract EventraContract is ERC721, Ownable {
         uint48 _endSellDate,
         uint48 _eventDate,
         uint16 _ticketRoyalty,
-        uint32 _totalTicketNumber
+        uint32 _totalTicketNumber,
+        uint8 _maxTicketsPerAddress,
+        uint8 _maxNumberOfOwners
     ) external payable onlyCompany(msg.sender) {
         if (msg.value != EVENT_DEPOSIT) revert InvalidAmount(msg.value, EVENT_DEPOSIT);
         if (bytes(_eventName).length == 0) revert InvalidArgument("Invalid Event Name");
@@ -318,6 +383,8 @@ contract EventraContract is ERC721, Ownable {
             revert InvalidArgument("Invalid Ticket Royalty");
         }
         if (_totalTicketNumber == 0) revert InvalidArgument("Invalid Total Ticket Number");
+        if (_maxTicketsPerAddress == 0) revert InvalidArgument("Invalid Max Tickets per Address");
+        if (_maxNumberOfOwners == 0) revert InvalidArgument("Invalid Max Number of Owners");
 
         uint256 eventId = nextEventId;
 
@@ -334,7 +401,9 @@ contract EventraContract is ERC721, Ownable {
             organizer: msg.sender,
             eventState: EventState.Active,
             eventFunds: 0,
-            ticketsSold: 0
+            ticketsSold: 0,
+            maxNumberOfOwners: _maxNumberOfOwners,
+            maxTicketsPerAddress: _maxTicketsPerAddress
         });
 
         nextEventId++;
