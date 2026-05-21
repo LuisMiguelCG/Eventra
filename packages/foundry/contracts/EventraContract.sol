@@ -274,10 +274,14 @@ contract EventraContract is ERC721, Ownable {
         }
         if (msg.value != eventra.ticketPrice) revert InvalidAmount(msg.value, eventra.ticketPrice);
 
+        if (checkNumberOfTicketsOfUserForOneEvent(_eventId, msg.sender) == eventra.maxTicketsPerAddress) {
+            revert Unauthorized("You reached the max number of tickets you can buy for this event.");
+        }
+
         uint256 tokenId = nextTokenId;
         nextTokenId++;
 
-        tickets[tokenId] = Ticket({ eventId: _eventId, ticketUser: msg.sender, ticketState: TicketState.Active });
+        tickets[tokenId] = Ticket({ eventId: _eventId, ticketUser: msg.sender, numberOfOwners: 1, ticketState: TicketState.Active });
 
         // Vincula Ticket(TokenId) a Evento
         eventTickets[_eventId].push(tokenId);
