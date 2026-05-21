@@ -106,7 +106,7 @@ contract EventraContract is ERC721, Ownable {
     error EventNotFinished(uint256 eventId);
     error EventFinished(uint256 eventId);
     error EventNotActive(uint256 eventId);
-    error EventSoldOut(uint256 eventId);
+    error EventIsSoldOut(uint256 eventId);
     error EventCancelled(uint256 eventId);
 
     //////////////////////
@@ -195,7 +195,7 @@ contract EventraContract is ERC721, Ownable {
             revert EventFinished(_eventId);
         }
 
-        if (eventra.eventState == EventState.Cancelled) {
+        if (events[_eventId].eventState == EventState.Canceled) {
             revert EventCancelled(_eventId);
         }    
         _;
@@ -258,7 +258,7 @@ contract EventraContract is ERC721, Ownable {
         onlyActivedEvent(_eventId)
     {
         Event storage eventra = events[_eventId];
-        if (eventra.eventState == EventState.SoldOut) revert EventSoldOut(_eventId);
+        if (eventra.eventState == EventState.SoldOut) revert EventIsSoldOut(_eventId);
         if (block.timestamp > eventra.endSellDate || block.timestamp < eventra.startSellDate) revert SalesClosed(_eventId);
         if (msg.value != eventra.ticketPrice) revert InvalidAmount(msg.value, eventra.ticketPrice);
         
@@ -391,7 +391,7 @@ contract EventraContract is ERC721, Ownable {
     {
 
         Event storage eventra = events[eventId];
-        if (block.timestamp < events[_eventId].eventDate) revert EventNotFinished(_eventId);
+        if (block.timestamp < eventra.eventDate) revert EventNotFinished(eventId);
         
         uint256 amount = eventra.eventFunds;
         if (amount == 0) revert NotFundsToWithdraw(msg.sender, eventId); 
