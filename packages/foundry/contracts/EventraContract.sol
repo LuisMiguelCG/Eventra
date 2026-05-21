@@ -327,7 +327,9 @@ contract EventraContract is ERC721, Ownable {
         uint48 _endSellDate,
         uint48 _eventDate,
         uint16 _ticketRoyalty,
-        uint32 _totalTicketNumber
+        uint32 _totalTicketNumber,
+        uint8 _maxTicketsPerAddress,
+        uint8 _maxNumberOfOwners
     ) external payable onlyCompany(msg.sender) {
         if (msg.value != EVENT_DEPOSIT) revert InvalidAmount(msg.value, EVENT_DEPOSIT);
         if (bytes(_eventName).length == 0) revert InvalidArgument("Invalid Event Name");
@@ -341,6 +343,8 @@ contract EventraContract is ERC721, Ownable {
             revert InvalidArgument("Invalid Ticket Royalty");
         }
         if (_totalTicketNumber == 0) revert InvalidArgument("Invalid Total Ticket Number");
+        if (_maxTicketsPerAddress == 0) revert InvalidArgument("Invalid Max Tickets per Address");
+        if (_maxNumberOfOwners == 0) revert InvalidArgument("Invalid Max Number of Owners");
 
         uint256 eventId = nextEventId;
 
@@ -357,7 +361,9 @@ contract EventraContract is ERC721, Ownable {
             organizer: msg.sender,
             eventState: EventState.Active,
             eventFunds: 0,
-            ticketsSold: 0
+            ticketsSold: 0,
+            maxNumberOfOwners: _maxNumberOfOwners,
+            maxTicketsPerAddress: _maxTicketsPerAddress
         });
 
         nextEventId++;
