@@ -111,6 +111,8 @@ contract EventraContract is ERC721, Ownable {
     error EventIsSoldOut(uint256 eventId);
     error EventCancelled(uint256 eventId);
 
+    error TicketTransferFailed();
+
     //////////////////////
     /// State Variables //
     //////////////////////
@@ -306,7 +308,34 @@ contract EventraContract is ERC721, Ownable {
 
     function viewOurTickets() external { }
     function resendTicket() external { }
-    function transferTicket() external { }
+
+    function deleteTicketFromUser(address _user, uint256 _ticket) private returns (bool _ok) {
+        
+    }
+
+    function transferTicket(address _to, uint256 _ticketId) external {
+        if(!users[msg.sender]) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
+        if(!users[_to]) revert Unauthorized("Destination is not an user of Eventra. Please be sure the account is an Eventra's user");
+
+        Ticket storage ticket = tickets[_ticketId];
+        if(ticket.ticketUser != msg.sender) revert TicketNotFound();
+        if(checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, _to) == events[ticket.eventId].maxTicketsPerAddress) {
+            revert Unauthorized("Destination reached the max number of tickets it can get for this event.");
+        }
+
+        if(ticket.ticketState != TicketState.Active) revert InvalidTicketState();
+        
+        Event storage ev = events[ticket.eventId];
+        if(ev.eventState != EventState.Active && ev.eventState != EventState.SoldOut) revert InvalidEventState();
+
+        tickets[_ticketId].ticketUser = _to;
+
+        bool ok = deleteTicketFromUser(msg.sender, _ticketId);
+        if (!ok) revert TicketTransferFailed();
+        userTickets[_to].push(_ticketId);
+
+        _safeTransfer(msg.sender, _to, _ticketId);
+    }
 
     function registerCompany(string memory _companyName, address _addr) external {
         // SI QUIERES BORRAR ESTO, COMO TE ASEGURAS DE QUE SOLO
