@@ -267,6 +267,8 @@ contract EventraContract is ERC721, Ownable {
     }
 
     function buyTicket(uint256 _eventId) external payable eventExists(_eventId) onlyActivedEvent(_eventId) {
+        
+        if(users[msg.sender] == false) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
         Event storage eventra = events[_eventId];
         if (eventra.eventState == EventState.SoldOut) revert EventIsSoldOut(_eventId);
         if (block.timestamp > eventra.endSellDate || block.timestamp < eventra.startSellDate) {
