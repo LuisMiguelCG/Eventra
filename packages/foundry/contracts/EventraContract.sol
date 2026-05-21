@@ -236,7 +236,8 @@ contract EventraContract is ERC721, Ownable {
             uint48 _startSellDate,
             uint48 _endSellDate,
             uint48 _eventDate,
-            uint32 _ticketsLeft
+            uint32 _ticketsLeft,
+            uint8 _maxTicketsPerAddress
         )
     {
         Event storage eventra = events[eventId];
@@ -248,7 +249,8 @@ contract EventraContract is ERC721, Ownable {
             eventra.startSellDate,
             eventra.endSellDate,
             eventra.eventDate,
-            eventra.totalTicketNumber - eventra.ticketsSold
+            eventra.totalTicketNumber - eventra.ticketsSold,
+            eventra.maxTicketsPerAddress
         );
     }
 
