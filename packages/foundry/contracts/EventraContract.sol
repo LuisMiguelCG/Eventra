@@ -123,6 +123,7 @@ contract EventraContract is ERC721, Ownable {
 
     uint256 public nextEventId;
     uint256 public nextTokenId;  // Variable para controlar el id del NFT. Se usa para crear
+    uint256[] public eventsIds; 
 
     mapping(address => bool) public users;
     mapping(address => bool) public companies;
@@ -211,38 +212,6 @@ contract EventraContract is ERC721, Ownable {
         emit UserRegistered(msg.sender);
     }
 
-    function loggingUser() external { }
-
-    
-    function searchEvent(uint256 _eventId) 
-        external
-        view
-        eventExists(_eventId)
-        returns (
-            string memory _eventName,
-            string memory _eventDescription,
-            uint96 _ticketPrice,
-            uint48 _startSellDate,
-            uint48 _endSellDate,
-            uint48 _eventDate,
-            uint32 _ticketsLeft,
-            uint8 _maxTicketsPerAddress
-        )
-    {
-        Event storage eventra = events[_eventId];
-
-        return (
-            eventra.eventName,
-            eventra.eventDescription,
-            eventra.ticketPrice,
-            eventra.startSellDate,
-            eventra.endSellDate,
-            eventra.eventDate,
-            eventra.totalTicketNumber - eventra.ticketsSold,
-            eventra.maxTicketsPerAddress
-        );
-    }
-
     function checkNumberOfTicketsOfUserForOneEvent(uint256 _eventId, address _user) private view returns (uint8 _numberOfTickets) {
         uint256[] memory temp = userTickets[_user];
         uint8 ticketsOfUserForEvent = 0;
@@ -294,8 +263,6 @@ contract EventraContract is ERC721, Ownable {
         emit TicketSold(_eventId, tokenId, msg.sender, eventra.ticketPrice);
     }
 
-    function viewOurTickets() external { }
-    function resendTicket() external { }
 
     function deleteTicketFromUser(address _user, uint256 _ticket) private returns (bool _ok) {
         uint256[] storage userList = userTickets[_user];
@@ -312,12 +279,11 @@ contract EventraContract is ERC721, Ownable {
         return false;
     }
 
-    function transferTicket(address _to, uint256 _ticketId) external {
-        if(!users[msg.sender]) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
+    function transferTicket(address _to, uint256 _ticketId) external onlyUser(msg.sender) {
         if(!users[_to]) revert Unauthorized("Destination is not an user of Eventra. Please be sure the account is an Eventra's user");
 
         Ticket storage ticket = tickets[_ticketId];
-        if(ticket.ticketUser != msg.sender) revert TicketNotFound();
+        if(ticket.ticketUser != msg.sender) revert TicketNotFound("Not the owner of the ticket.");
         if(checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, _to) == events[ticket.eventId].maxTicketsPerAddress) {
             revert Unauthorized("Destination reached the max number of tickets it can get for this event.");
         }
@@ -335,7 +301,9 @@ contract EventraContract is ERC721, Ownable {
 
         _safeTransfer(msg.sender, _to, _ticketId);
     }
-    function getAllTickets() 
+
+
+    function getAllUserTickets() 
         external 
         view
         onlyUser(msg.sender) 
@@ -349,23 +317,25 @@ contract EventraContract is ERC721, Ownable {
         external 
         view 
         onlyUser(msg.sender) 
-        returns (
-            uint256 eventId,
-            string memory eventName,
-            uint96 ticketPrice,
-            uint48 eventDate,
-            TicketState ticketState
-        ) 
+        returns (Ticket memory)
     {
-        Ticket storage ticket = tickets[_tokenId];
+        return tickets[_tokenId];
+    }
 
-        return (
-            ticket.eventId,
-            ticket.eventName,
-            ticket.ticketPrice,
-            ticket.eventDate,
-            ticket.ticketState
-        );
+    function getAllEvents() 
+        external 
+        view 
+        returns (uint256[] memory)
+    {
+        return eventsIds;
+    }
+
+    function getEvent(uint256 _eventId) 
+        external 
+        view 
+        returns (Event memory)
+    {
+        return events[_eventId];
     }
 
 
@@ -379,14 +349,14 @@ contract EventraContract is ERC721, Ownable {
         emit EventCompanyRegistered(_companyName, _addr); 
     }
 
-    //las fechas se pasarian en formato UNIX: 1234567890 10 digits
+
     function createEvent(
         string memory _eventName,
         string memory _eventDescription,
         uint96 _ticketPrice,
-        uint48 _startSellDate,
-        uint48 _endSellDate,
-        uint48 _eventDate,
+        uint48 _startSellDate,          //las fechas se pasarian en formato UNIX: 1234567890 10 digits
+        uint48 _endSellDate,            //las fechas se pasarian en formato UNIX: 1234567890 10 digits
+        uint48 _eventDate,              //las fechas se pasarian en formato UNIX: 1234567890 10 digits
         uint16 _ticketRoyalty,
         uint32 _totalTicketNumber,
         uint8 _maxTicketsPerAddress,
@@ -427,25 +397,29 @@ contract EventraContract is ERC721, Ownable {
             maxTicketsPerAddress: _maxTicketsPerAddress
         });
 
+        eventsIds.push(eventId);
         nextEventId++;
 
         emit EventCreated(eventId, _eventName, _ticketPrice, _eventDate);
     }
 
-    function viewStatistics(uint256 _eventId)
+    function getEventStatistics(uint256 _eventId)
         external
         view
         eventExists(_eventId)
         onlyEventOrganizer(_eventId)
         returns (
             uint256 eventBalance,
-            uint32 ticketsSoldNumber,
-            uint32 ticketsLeft
+            uint32 ticketsSold,
+            uint32 ticketsLeft,
+            uint256 sellThroughRate
         )
     {
         Event storage eventra = events[_eventId];
+        ticketsLeft = eventra.totalTicketNumber - eventra.ticketsSold;
+        sellThroughRate = (eventra.ticketsSold * 100) / eventra.totalTicketNumber; 
 
-        return (eventra.eventFunds, eventra.ticketsSold, eventra.totalTicketNumber - eventra.ticketsSold);
+        return (eventra.eventFunds, eventra.ticketsSold, ticketsLeft, sellThroughRate);
     }
 
     function cancelEvent(uint256 _eventId) 
