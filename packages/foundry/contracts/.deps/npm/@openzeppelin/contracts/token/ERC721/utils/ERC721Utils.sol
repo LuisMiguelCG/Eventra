@@ -3,8 +3,8 @@
 
 pragma solidity ^0.8.20;
 
-import {IERC721Receiver} from "../IERC721Receiver.sol";
-import {IERC721Errors} from "../../../interfaces/draft-IERC6093.sol";
+import { IERC721Receiver } from "../IERC721Receiver.sol";
+import { IERC721Errors } from "../../../interfaces/draft-IERC6093.sol";
 
 /**
  * @dev Library that provides common ERC-721 utility functions.
@@ -22,13 +22,9 @@ library ERC721Utils {
      * Otherwise, the recipient must implement {IERC721Receiver-onERC721Received} and return the acceptance magic value to accept
      * the transfer.
      */
-    function checkOnERC721Received(
-        address operator,
-        address from,
-        address to,
-        uint256 tokenId,
-        bytes memory data
-    ) internal {
+    function checkOnERC721Received(address operator, address from, address to, uint256 tokenId, bytes memory data)
+        internal
+    {
         if (to.code.length > 0) {
             try IERC721Receiver(to).onERC721Received(operator, from, tokenId, data) returns (bytes4 retval) {
                 if (retval != IERC721Receiver.onERC721Received.selector) {

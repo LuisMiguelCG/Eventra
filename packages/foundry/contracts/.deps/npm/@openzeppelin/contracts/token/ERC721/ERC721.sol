@@ -3,13 +3,13 @@
 
 pragma solidity ^0.8.24;
 
-import {IERC721} from "./IERC721.sol";
-import {IERC721Metadata} from "./extensions/IERC721Metadata.sol";
-import {ERC721Utils} from "./utils/ERC721Utils.sol";
-import {Context} from "../../utils/Context.sol";
-import {Strings} from "../../utils/Strings.sol";
-import {IERC165, ERC165} from "../../utils/introspection/ERC165.sol";
-import {IERC721Errors} from "../../interfaces/draft-IERC6093.sol";
+import { IERC721 } from "./IERC721.sol";
+import { IERC721Metadata } from "./extensions/IERC721Metadata.sol";
+import { ERC721Utils } from "./utils/ERC721Utils.sol";
+import { Context } from "../../utils/Context.sol";
+import { Strings } from "../../utils/Strings.sol";
+import { IERC165, ERC165 } from "../../utils/introspection/ERC165.sol";
+import { IERC721Errors } from "../../interfaces/draft-IERC6093.sol";
 
 /**
  * @dev Implementation of https://eips.ethereum.org/EIPS/eip-721[ERC-721] Non-Fungible Token Standard, including
@@ -43,10 +43,8 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
 
     /// @inheritdoc IERC165
     function supportsInterface(bytes4 interfaceId) public view virtual override(ERC165, IERC165) returns (bool) {
-        return
-            interfaceId == type(IERC721).interfaceId ||
-            interfaceId == type(IERC721Metadata).interfaceId ||
-            super.supportsInterface(interfaceId);
+        return interfaceId == type(IERC721).interfaceId || interfaceId == type(IERC721Metadata).interfaceId
+            || super.supportsInterface(interfaceId);
     }
 
     /// @inheritdoc IERC721
@@ -162,9 +160,8 @@ abstract contract ERC721 is Context, ERC165, IERC721, IERC721Metadata, IERC721Er
      * assumption.
      */
     function _isAuthorized(address owner, address spender, uint256 tokenId) internal view virtual returns (bool) {
-        return
-            spender != address(0) &&
-            (owner == spender || isApprovedForAll(owner, spender) || _getApproved(tokenId) == spender);
+        return spender != address(0)
+            && (owner == spender || isApprovedForAll(owner, spender) || _getApproved(tokenId) == spender);
     }
 
     /**

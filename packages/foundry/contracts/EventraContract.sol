@@ -110,6 +110,7 @@ contract EventraContract is ERC721, Ownable {
     error EventNotActive(uint256 eventId);
     error EventIsSoldOut(uint256 eventId);
     error EventCancelled(uint256 eventId);
+    error InvalidAmountOfTicketOwners();
 
     error TicketTransferFailed();
 
@@ -256,7 +257,11 @@ contract EventraContract is ERC721, Ownable {
         );
     }
 
-    function checkNumberOfTicketsOfUserForOneEvent(uint256 _eventId, address _user) private view returns (uint8 _numberOfTickets) {
+    function checkNumberOfTicketsOfUserForOneEvent(uint256 _eventId, address _user)
+        internal
+        view
+        returns (uint8 _numberOfTickets)
+    {
         uint256[] memory temp = userTickets[_user];
         uint8 ticketsOfUserForEvent = 0;
         for (uint256 i = 0; i < temp.length; i++) {
@@ -269,8 +274,7 @@ contract EventraContract is ERC721, Ownable {
     }
 
     function buyTicket(uint256 _eventId) external payable eventExists(_eventId) onlyActivedEvent(_eventId) {
-        
-        if(users[msg.sender] == false) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
+        if (users[msg.sender] == false) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
         Event storage eventra = events[_eventId];
         if (eventra.eventState == EventState.SoldOut) revert EventIsSoldOut(_eventId);
         if (block.timestamp > eventra.endSellDate || block.timestamp < eventra.startSellDate) {
@@ -285,7 +289,8 @@ contract EventraContract is ERC721, Ownable {
         uint256 tokenId = nextTokenId;
         nextTokenId++;
 
-        tickets[tokenId] = Ticket({ eventId: _eventId, ticketUser: msg.sender, numberOfOwners: 1, ticketState: TicketState.Active });
+        tickets[tokenId] =
+            Ticket({ eventId: _eventId, ticketUser: msg.sender, numberOfOwners: 1, ticketState: TicketState.Active });
 
         // Vincula Ticket(TokenId) a Evento
         eventTickets[_eventId].push(tokenId);
@@ -309,7 +314,7 @@ contract EventraContract is ERC721, Ownable {
     function viewOurTickets() external { }
     function resendTicket() external { }
 
-    function deleteTicketFromUser(address _user, uint256 _ticket) private returns (bool _ok) {
+    function deleteTicketFromUser(address _user, uint256 _ticket) internal returns (bool _ok) {
         uint256[] storage userList = userTickets[_user];
         uint256 len = userList.length;
 
@@ -325,20 +330,24 @@ contract EventraContract is ERC721, Ownable {
     }
 
     function transferTicket(address _to, uint256 _ticketId) external {
-        if(!users[msg.sender]) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
-        if(!users[_to]) revert Unauthorized("Destination is not an user of Eventra. Please be sure the account is an Eventra's user");
+        if (!users[msg.sender]) revert Unauthorized("You are not an user of Eventra. Please sign in / log in");
+        if (!users[_to]) {
+            revert Unauthorized("Destination is not an user of Eventra. Please be sure the account is an Eventra's user");
+        }
 
         Ticket storage ticket = tickets[_ticketId];
-        if(ticket.ticketUser != msg.sender) revert TicketNotFound();
-        if(checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, _to) == events[ticket.eventId].maxTicketsPerAddress) {
+        if (ticket.ticketUser != msg.sender) revert TicketNotFound();
+        if (checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, _to) == events[ticket.eventId].maxTicketsPerAddress) {
             revert Unauthorized("Destination reached the max number of tickets it can get for this event.");
         }
 
-        if(ticket.ticketState != TicketState.Active) revert InvalidTicketState();
-        
-        Event storage ev = events[ticket.eventId];
-        if(ev.eventState != EventState.Active && ev.eventState != EventState.SoldOut) revert InvalidEventState();
+        if (ticket.ticketState != TicketState.Active) revert InvalidTicketState();
 
+        Event storage ev = events[ticket.eventId];
+        if (ev.eventState != EventState.Active && ev.eventState != EventState.SoldOut) revert InvalidEventState();
+
+        if (ticket.numberOfOwners >= ev.maxNumberOfOwners) revert InvalidAmountOfTicketOwners();
+        ticket.numberOfOwners += 1;
         tickets[_ticketId].ticketUser = _to;
 
         bool ok = deleteTicketFromUser(msg.sender, _ticketId);
