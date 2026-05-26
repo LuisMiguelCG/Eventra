@@ -165,6 +165,7 @@ contract EventraContract is ERC721, Ownable {
     event AccountSuspended(address indexed userSuspended);
 
     event TicketInResell(uint256 indexed ticketId, uint256 ticketPrice);
+    event TicketRemovedFromResell (uint256 indexed ticketId);
 
     /////////////////
     /// Modifiers ///
@@ -550,6 +551,10 @@ contract EventraContract is ERC721, Ownable {
         ticketsInResell.push(tokenId);
 
         emit TicketInResell(tokenId, resellPrice);
+    }
+
+    function removeTicketFromResell(uint256 tokenId) external onlyUser(msg.sender) {
+
     }
 
     receive() external payable { }
