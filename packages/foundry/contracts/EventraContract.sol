@@ -581,8 +581,59 @@ contract EventraContract is ERC721, Ownable {
         return false;
     }
 
-    function buyTicketFromResell(uint256 tokenId) external onlyUser(msg.sender) {
-        
+    function buyTicketFromResell(uint256 tokenId) external payable onlyUser(msg.sender) {
+        Ticket storage ticket = tickets[tokenId];
+        if (ticket.numberOfOwners == 0) revert TicketNotFound("This ticket does not exist");
+        if (ticket.ticketState != TicketState.inResell) revert InvalidTicketState();
+
+        uint256 resellPrice = ticketResellPrice[tokenId];
+        if (resellPrice == 0) revert InvalidTicketState();
+
+        address seller = ticket.ticketUser;
+        if (seller == msg.sender) revert Unauthorized("You can't buy your own ticket");
+
+        if (msg.value != resellPrice) revert InvalidAmount(msg.value, resellPrice);
+
+        Event storage ev = events[ticket.eventId];
+        if (
+            ev.eventState == EventState.Canceled || ev.eventState == EventState.Expired
+                || ev.eventState == EventState.Finished
+        ) {
+            revert InvalidEventState();
+        }
+        if (block.timestamp >= ev.eventDate) revert EventFinished(ticket.eventId);
+
+        if (checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, msg.sender) == ev.maxTicketsPerAddress) {
+            revert Unauthorized("You reached the max number of tickets you can buy for this event.");
+        }
+
+        if (ticket.numberOfOwners >= ev.maxNumberOfOwners) {
+            revert InvalidAmountOfTicketOwners();
+        }
+
+        uint256 royalty = (resellPrice * ev.ticketRoyalty) / 100;
+        uint256 amountToSeller = resellPrice - royalty;
+
+        ticket.ticketUser = msg.sender;
+        ticket.numberOfOwners += 1;
+        ticket.ticketState = TicketState.Active;
+        ticketResellPrice[tokenId] = 0;
+
+        bool ok = deleteTicketFromResell(tokenId);
+        if (!ok) revert TicketNotFound("Ticket not found in resell list");
+
+        bool ok2 = deleteTicketFromUser(seller, tokenId);
+        if (!ok2) revert TicketTransferFailed();
+        userTickets[msg.sender].push(tokenId);
+
+        eventCompanyBalance[ev.organizer] += royalty;
+
+        (bool sent,) = seller.call{ value: amountToSeller }("");
+        if (!sent) revert TransferFailed(seller, amountToSeller);
+
+        _safeTransfer(seller, msg.sender, tokenId);
+
+        emit TicketSold(ticket.eventId, tokenId, msg.sender, uint96(resellPrice));
     }
 
     receive() external payable { }
