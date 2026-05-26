@@ -145,7 +145,7 @@ contract EventraContract is ERC721, Ownable {
 
     // Variable thought for frontend => for showing which tickets are on resell;
     uint256[] public ticketsInResell;
-    
+
     ////////////////
     /// Events /////
     ////////////////
@@ -160,6 +160,8 @@ contract EventraContract is ERC721, Ownable {
     event EventSoldOut(uint256 indexed eventId, string indexed eventName);
     event TicketSold(uint256 indexed eventId, uint256 indexed tokenId, address indexed buyer, uint96 price);
     event AccountSuspended(address indexed userSuspended);
+
+    event TicketInResell(uint256 indexed ticketId, uint256 ticketPrice);
 
     /////////////////
     /// Modifiers ///
