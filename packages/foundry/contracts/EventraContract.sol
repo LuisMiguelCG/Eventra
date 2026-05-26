@@ -120,7 +120,8 @@ contract EventraContract is ERC721, Ownable {
     uint16 public constant MINIMUM_ROYALTY = 10;
     uint16 public constant MAXIMUM_ROYALTY = 25;
     uint256 public constant CANCEL_DEAD_LINE = 1 days;
-    uint256 public constant TICKET_BUYING_COMISSION = 1;
+    
+    uint256 public immutable TICKET_BUYING_COMISSION;
 
     uint256 public nextEventId;
     uint256 public nextTokenId; // Variable para controlar el id del NFT. Se usa para crear
@@ -201,9 +202,10 @@ contract EventraContract is ERC721, Ownable {
     /// Constructor ///
     ///////////////////
 
-    constructor(address _owner) payable ERC721("Eventra Tickets", "EVTR") Ownable(_owner) {
+    constructor(address _owner, uint256 _ticketBuyingComission) payable ERC721("Eventra Tickets", "EVTR") Ownable(_owner) {
         nextEventId = 1;
         nextTokenId = 1;
+        TICKET_BUYING_COMISSION = _ticketBuyingComission;
     }
 
     ///////////////////
