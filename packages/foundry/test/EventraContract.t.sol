@@ -907,7 +907,6 @@ contract EventraTests is Test {
 
         vm.expectPartialRevert(OwnableUnauthorizedAccount.selector);
         eventra.suspendAccount(owner);
-
     }
 
     /// Tests _update (suspended users) ///
