@@ -69,11 +69,7 @@ contract EventraContract is ERC721, Ownable {
         uint48 eventDate;
         uint16 ticketRoyalty; 
         uint32 totalTicketNumber; 
-        uint16 ticketRoyalty; 
-        uint32 totalTicketNumber; 
         uint256 eventId;
-        address organizer; 
-        uint32 ticketsSold; 
         address organizer; 
         uint32 ticketsSold; 
         uint8 maxTicketsPerAddress;
@@ -83,7 +79,6 @@ contract EventraContract is ERC721, Ownable {
 
     struct Ticket {
         uint256 eventId;
-        address ticketUser; 
         address ticketUser; 
         uint8 numberOfOwners;
         TicketState ticketState;
@@ -100,22 +95,12 @@ contract EventraContract is ERC721, Ownable {
     error EventError(uint256 eventId, string argument);
     error TickectError(uint256 tokenId, string argument);
 
-    error InvalidAction(string argument);
-
-    error EventError(uint256 eventId, string argument);
-    error TickectError(uint256 tokenId, string argument);
-
     error Unauthorized(string argument);
 
     error TransferFailed(address to, uint256 amount, string argument);
     error TicketTransferFailed(address to, uint256 tokenId, string argument);
 
-
-    error TransferFailed(address to, uint256 amount, string argument);
-    error TicketTransferFailed(address to, uint256 tokenId, string argument);
-
-    error NotFundsToWithdraw(address organizer, uint256 eventId);
-    error NotFundsToWithdrawOwner(address owner, string argument);
+    error NotFundsToWithdraw(address organizer, uint256 eventId, string argument);
     error NotFundsToWithdrawOwner(address owner, string argument);
 
     //////////////////////
@@ -131,37 +116,35 @@ contract EventraContract is ERC721, Ownable {
 
     uint256 public nextEventId;
     uint256 public nextTokenId; 
-    uint256 public nextTokenId; 
     uint256[] public eventsIds;
-    uint256 public ownerBalance; 
-    uint256 public ownerBalance; 
+    uint256[] public ticketsInResell;
+    
 
     mapping(address => bool) public users;
     mapping(address => bool) public suspendedUsers;
+    mapping(address => uint256) public pendingRefunds;
+
     mapping(address => bool) public companies;
     mapping(address => uint256) public eventCompanyBalance;
 
     mapping(uint256 => Event) public events; // EventId => Event struct
-    mapping(address => uint256[]) public companyEvents; // Addr => Lista de EventId
+    mapping(address => bool) public companyEvents; // Addr => Lista de EventId
 
     mapping(uint256 => uint256[]) public eventTickets; // EventId => Lista de TokenId - OTRA OPCION: codificar el eventId dentro del propio tokenId
 
     mapping(uint256 => Ticket) public tickets; // TokenId => Ticket struct.
     mapping(address => uint256[]) public userTickets; // User Address => Lista de TokenId vinculados al User Address.
+    mapping(uint256 => uint256) public userTicketIndex; // TokenId => index del ticketId en el array userTickets
+    mapping(address => mapping(uint256 => uint256)) public userEventTickets; // User Address => EventId => Numberof tickets for that event
 
-    // Variable for verifying if a ticket is in resell.
-    // If value is 0 => ticket is not in resell
-    mapping(uint256 => uint256) public ticketResellPrice;
-
-    // Variable thought for frontend => for showing which tickets are on resell;
-    uint256[] public ticketsInResell;
+    mapping(uint256 => uint256) public ticketResellPrice;  // If value is 0 => ticket is not in resell
+    mapping(uint256 => uint256) public resellTicketIndex;  // TicketId => index del ticketId en el array ticketsInResell
 
     ////////////////
     /// Events /////
     ////////////////
 
     event UserRegistered(address indexed user);
-    event EventCompanyRegistered(string companyName, address companyAddress); 
     event EventCompanyRegistered(string companyName, address companyAddress); 
     event EventCreated(uint256 indexed eventId, string indexed eventName, uint96 ticketPrice, uint48 indexed eventDate);
     event EventCanceled(
@@ -174,6 +157,8 @@ contract EventraContract is ERC721, Ownable {
 
     event TicketInResell(uint256 indexed ticketId, uint256 ticketPrice);
     event TicketRemovedFromResell (uint256 indexed ticketId);
+    event TicketFundsWithdrawn(uint256 indexed ticketId, string indexed argument, uint256 amount);
+
 
     /////////////////
     /// Modifiers ///
@@ -182,14 +167,6 @@ contract EventraContract is ERC721, Ownable {
     modifier eventExists(uint256 _eventId) {
         if (events[_eventId].organizer == address(0)) {
             revert EventError(_eventId, "Event not found");
-            revert EventError(_eventId, "Event not found");
-        }
-        _;
-    }
-
-    modifier onlyEventOrganizer(uint256 _eventId) {
-        if (events[_eventId].organizer != msg.sender) {
-            revert Unauthorized("Not Event Organizer");
         }
         _;
     }
@@ -211,11 +188,9 @@ contract EventraContract is ERC721, Ownable {
     modifier onlyActivedEvent(uint256 _eventId) {
         if (block.timestamp >= events[_eventId].eventDate) {
             revert EventError(_eventId, "Event finished");
-            revert EventError(_eventId, "Event finished");
         }
 
         if (events[_eventId].eventState == EventState.Canceled) {
-            revert EventError(_eventId, "Event canceled");
             revert EventError(_eventId, "Event canceled");
         }
         _;
@@ -231,6 +206,51 @@ contract EventraContract is ERC721, Ownable {
         OWNER_COMMISSION = _ticketBuyingComission;
     }
 
+    ////////////////////////////
+    ///  Internal Functions  ///
+    ////////////////////////////
+
+    function _deleteTicketFromUser(address _user, uint256 _ticket) internal returns (bool _ok) {
+        uint256[] storage userList = userTickets[_user];
+        uint256 len = userList.length;
+        uint256 ticketIndex = userTicketIndex[_ticket];
+
+        if (userList[ticketIndex] == _ticket) {
+
+            userList[ticketIndex] = userList[len - 1];
+            userTicketIndex[userList[len - 1]] = ticketIndex;
+            userList.pop();
+            return true;
+        }
+        return false;
+    }
+
+    function _deleteTicketFromResell(uint256 _ticketId) internal returns (bool) {
+        uint256[] storage ticketsInResellIds = ticketsInResell;
+        uint256 len = ticketsInResell.length;
+        uint256 ticketIndex = resellTicketIndex[_ticketId];
+
+        if (ticketsInResellIds[ticketIndex] == _ticketId) {
+
+            ticketsInResellIds[ticketIndex] = ticketsInResellIds[len - 1];
+            resellTicketIndex[ticketsInResellIds[len - 1]] = ticketIndex;
+            ticketsInResellIds.pop();
+            return true;
+        }
+        return false;
+    }
+
+    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
+        address from = _ownerOf(tokenId);
+        if (from != address(0) && suspendedUsers[from]) {
+            revert InvalidAction("User suspended");
+        }
+        if (to != address(0) && suspendedUsers[to]) {
+            revert InvalidAction("User suspended");
+        }
+        return super._update(to, tokenId, auth);
+    }    
+
     ///////////////////
     /// Functions /////
     ///////////////////
@@ -242,150 +262,7 @@ contract EventraContract is ERC721, Ownable {
         emit UserRegistered(msg.sender);
     }
 
-    function checkNumberOfTicketsOfUserForOneEvent(uint256 _eventId, address _user)
-        internal
-        view
-        returns (uint8 _numberOfTickets)
-    {
-        uint256[] memory temp = userTickets[_user];
-        uint8 ticketsOfUserForEvent = 0;
-        for (uint256 i = 0; i < temp.length; i++) {
-            uint256 ticket = temp[i];
-            if (tickets[ticket].eventId == _eventId) {
-                ticketsOfUserForEvent += 1;
-            }
-        }
-        return ticketsOfUserForEvent;
-    }
 
-    function buyTicket(uint256 _eventId) external payable eventExists(_eventId) onlyActivedEvent(_eventId) onlyUser(msg.sender) {
-
-    function buyTicket(uint256 _eventId) external payable eventExists(_eventId) onlyActivedEvent(_eventId) onlyUser(msg.sender) {
-
-        Event storage eventra = events[_eventId];
-
-        if (eventra.eventState == EventState.SoldOut) {
-            revert EventError(_eventId, "Event sold out");
-            revert EventError(_eventId, "Event sold out");
-        }
-        if (block.timestamp > eventra.endSellDate || block.timestamp < eventra.startSellDate) {
-            revert EventError(_eventId, "Sales closed");
-            revert EventError(_eventId, "Sales closed");
-        }
-        
-        uint256 amountToOwner = (eventra.ticketPrice * OWNER_COMMISSION) / 100;
-
-        if (msg.value != eventra.ticketPrice + amountToOwner) {
-            revert InvalidAmount(msg.value, eventra.ticketPrice + amountToOwner);
-        }
-
-        if (checkNumberOfTicketsOfUserForOneEvent(_eventId, msg.sender) == eventra.maxTicketsPerAddress) {
-            revert InvalidAction("You reached the max number of tickets you can buy for this event.");
-            revert InvalidAction("You reached the max number of tickets you can buy for this event.");
-        }
-
-
-
-        uint256 tokenId = nextTokenId;
-        uint256 amountToOwner = (eventra.ticketPrice * TICKET_BUYING_COMISSION) / 100;
-
-        uint256 amountToOwner = (eventra.ticketPrice * TICKET_BUYING_COMISSION) / 100;
-
-        nextTokenId++;
-        ownerBalance += amountToOwner;
-        ownerBalance += amountToOwner;
-
-        tickets[tokenId] =
-            Ticket({ eventId: _eventId, ticketUser: msg.sender, numberOfOwners: 1, ticketState: TicketState.Active });
-
-        eventTickets[_eventId].push(tokenId);
-        userTickets[msg.sender].push(tokenId);
-        eventra.ticketsSold += 1;
-
-        if (eventra.ticketsSold == eventra.totalTicketNumber) {
-            eventra.eventState = EventState.SoldOut;
-            emit EventSoldOut(_eventId, eventra.eventName);
-        }
-
-        eventCompanyBalance[eventra.organizer] += msg.value - amountToOwner;
-        
-        // We have track of how much of the contract's balance belongs to the owner
-        eventCompanyBalance[owner()] += amountToOwner;
-
-        _safeMint(msg.sender, tokenId);
-
-        emit TicketSold(_eventId, tokenId, msg.sender, eventra.ticketPrice);
-    }
-
-    function deleteTicketFromUser(address _user, uint256 _ticket) internal returns (bool _ok) {
-        uint256[] storage userList = userTickets[_user];
-        uint256 len = userList.length;
-
-        for (uint256 i = 0; i < len; i++) {
-            if (userList[i] == _ticket) {
-                userList[i] = userList[len - 1];
-                userList.pop();
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    function transferTicket(address _to, uint256 _ticketId) external onlyUser(msg.sender) onlyUser(_to) onlyActivedEvent(tickets[_ticketId].eventId) {
-    function transferTicket(address _to, uint256 _ticketId) external onlyUser(msg.sender) onlyUser(_to) onlyActivedEvent(tickets[_ticketId].eventId) {
-
-        Ticket storage ticket = tickets[_ticketId];
-        if (ticket.ticketUser != msg.sender) revert Unauthorized("Wrong user");
-        if (checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, _to) == events[ticket.eventId].maxTicketsPerAddress) {
-            revert TicketTransferFailed(_to, _ticketId, "Destination reached the max number of tickets it can get for this event.");
-            revert TicketTransferFailed(_to, _ticketId, "Destination reached the max number of tickets it can get for this event.");
-        }
-        if (ticket.ticketState != TicketState.Active) {
-            revert TickectError(_ticketId, "Ticket is not active");
-            revert TickectError(_ticketId, "Ticket is not active");
-        }
-
-        Event storage ev = events[ticket.eventId];
-
-        if (ticket.numberOfOwners >= ev.maxNumberOfOwners) {
-            revert TicketTransferFailed(_to, _ticketId, "Max number of owners reached for this ticket");
-            revert TicketTransferFailed(_to, _ticketId, "Max number of owners reached for this ticket");
-        }
-        ticket.numberOfOwners += 1;
-        tickets[_ticketId].ticketUser = _to;
-
-        bool ok = deleteTicketFromUser(msg.sender, _ticketId);
-        if (!ok) revert TicketTransferFailed(_to, _ticketId, "Error deleting ticket from user");
-        if (!ok) revert TicketTransferFailed(_to, _ticketId, "Error deleting ticket from user");
-        userTickets[_to].push(_ticketId);
-
-        _safeTransfer(msg.sender, _to, _ticketId);
-    }
-
-    function getAllUserTickets() external view onlyUser(msg.sender) returns (uint256[] memory) {
-        return userTickets[msg.sender];
-    }
-
-    function getTicket(uint256 _tokenId) external view onlyUser(msg.sender) returns (Ticket memory) {
-        return tickets[_tokenId];
-    }
-
-    function getAllEvents() external view returns (uint256[] memory) {
-        return eventsIds;
-    }
-
-    function getEvent(uint256 _eventId) external view returns (Event memory) {
-        return events[_eventId];
-    }
-
-    function getTicketsInResell() external {
-
-    }
-
-    function getTicketsInResell() external {
-
-    }
 
     function registerCompany(string memory _companyName, address _addr) external {
         if (bytes(_companyName).length == 0) {
@@ -400,6 +277,8 @@ contract EventraContract is ERC721, Ownable {
         emit EventCompanyRegistered(_companyName, _addr);
     }
 
+
+
     function createEvent(
         string memory _eventName,
         string memory _eventDescription,
@@ -412,6 +291,9 @@ contract EventraContract is ERC721, Ownable {
         uint8 _maxTicketsPerAddress,
         uint8 _maxNumberOfOwners
     ) external payable onlyCompany(msg.sender) {
+        if (companyEvents[msg.sender]) {
+            revert InvalidAction("Company already has an event");
+        }
         if (msg.value != EVENT_DEPOSIT) {
             revert InvalidAmount(msg.value, EVENT_DEPOSIT);
         }
@@ -468,15 +350,58 @@ contract EventraContract is ERC721, Ownable {
 
         eventsIds.push(eventId);
         nextEventId++;
+        companyEvents[msg.sender] = true;
 
         emit EventCreated(eventId, _eventName, _ticketPrice, _eventDate);
     }
+
+
+    function cancelEvent(uint256 _eventId)
+        external
+        eventExists(_eventId)
+        onlyCompany(msg.sender)
+        onlyActivedEvent(_eventId)
+    {
+        Event storage eventra = events[_eventId];
+        eventra.eventState = EventState.Canceled;
+        companyEvents[msg.sender] = false;
+
+        uint256[] storage ticketsIds = eventTickets[_eventId];
+        for (uint256 i = 0; i < ticketsIds.length; i++) {
+
+            uint256 ticketId = ticketsIds[i];
+            Ticket storage ticket = tickets[ticketId];
+
+            if (ticket.ticketState == TicketState.Active || ticket.ticketState == TicketState.inResell) {
+                bool wasInResell = ticket.ticketState == TicketState.inResell;
+                ticket.ticketState = TicketState.Cancelled;
+
+                if (wasInResell) {
+                    ticketResellPrice[ticketId] = 0;
+                    bool ok = _deleteTicketFromResell(ticketId);
+                    if (!ok) revert TickectError(ticketId, "Ticket not found in resell list");
+                }
+
+                pendingRefunds[ticket.ticketUser] += eventra.ticketPrice;
+                eventCompanyBalance[eventra.organizer] -= eventra.ticketPrice;
+            }  
+        }
+
+        if (block.timestamp <= eventra.startSellDate - CANCEL_DEAD_LINE) {
+            (bool ok,) = msg.sender.call{ value: EVENT_DEPOSIT }("");
+            if (!ok) revert TransferFailed(msg.sender, EVENT_DEPOSIT, "Error refunding event deposit");
+        }
+
+        emit EventCanceled(_eventId, eventra.eventName, eventra.ticketPrice, eventra.eventDate);
+    }
+
+
 
     function getEventStatistics(uint256 _eventId)
         external
         view
         eventExists(_eventId)
-        onlyEventOrganizer(_eventId)
+        onlyCompany(msg.sender)
         returns (uint256 eventBalance, uint32 ticketsSold, uint32 ticketsLeft, uint256 sellThroughRate)
     {
         Event storage eventra = events[_eventId];
@@ -484,187 +409,80 @@ contract EventraContract is ERC721, Ownable {
         sellThroughRate = (eventra.ticketsSold * 100) / eventra.totalTicketNumber;
 
         return (eventCompanyBalance[msg.sender], eventra.ticketsSold, ticketsLeft, sellThroughRate);
-        return (eventCompanyBalance[msg.sender], eventra.ticketsSold, ticketsLeft, sellThroughRate);
     }
 
-    function cancelEvent(uint256 _eventId)
-        external
-        eventExists(_eventId)
-        onlyEventOrganizer(_eventId)
-        onlyActivedEvent(_eventId)
-    {
+    
+
+
+    function buyTicket(uint256 _eventId) external payable eventExists(_eventId) onlyActivedEvent(_eventId) onlyUser(msg.sender) {
+
         Event storage eventra = events[_eventId];
-        eventra.eventState = EventState.Canceled;
 
-        if (block.timestamp <= eventra.startSellDate - CANCEL_DEAD_LINE) {
-            (bool ok,) = msg.sender.call{ value: EVENT_DEPOSIT }("");
-            if (!ok) revert TransferFailed(msg.sender, EVENT_DEPOSIT, "Error refunding event deposit");
-            if (!ok) revert TransferFailed(msg.sender, EVENT_DEPOSIT, "Error refunding event deposit");
+        if (eventra.eventState == EventState.SoldOut) {
+            revert EventError(_eventId, "Event sold out");
         }
-
-        emit EventCanceled(_eventId, eventra.eventName, eventra.ticketPrice, eventra.eventDate);
-    }
-
-    function withdrawFunds(uint256 _eventId) external eventExists(_eventId) onlyEventOrganizer(_eventId) {
-        Event storage eventra = events[_eventId];
-        if (block.timestamp < eventra.eventDate) {
-            revert EventError(_eventId, "Event not finished yet");
-            revert EventError(_eventId, "Event not finished yet");
+        if (block.timestamp > eventra.endSellDate || block.timestamp < eventra.startSellDate) {
+            revert EventError(_eventId, "Sales closed");
         }
-
-        uint256 amount = eventCompanyBalance[msg.sender];
-        uint256 amount = eventCompanyBalance[msg.sender];
-        if (amount == 0) revert NotFundsToWithdraw(msg.sender, _eventId);
-
-        eventra.eventState = EventState.Finished;
-        eventCompanyBalance[msg.sender] = 0;
-        eventCompanyBalance[msg.sender] = 0;
-
-        (bool ok,) = msg.sender.call{ value: amount }("");
-        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing event funds");
-        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing event funds");
-
-        emit EventFundsWithdrawn(_eventId, eventra.eventName, amount);
-    }
-
-    function suspendAccount(address _userToSuspend) external onlyOwner {
-        if (_userToSuspend == address(0)) {
-    function suspendAccount(address _userToSuspend) external onlyOwner {
-        if (_userToSuspend == address(0)) {
-            revert InvalidArgument("User not found");
-        }
-        if (!users[_userToSuspend]) revert InvalidAction("User not registered");
-        users[_userToSuspend] = false;
-        suspendedUsers[_userToSuspend] = true;
-        if (!users[_userToSuspend]) revert InvalidAction("User not registered");
-        users[_userToSuspend] = false;
-        suspendedUsers[_userToSuspend] = true;
-
-        emit AccountSuspended(_userToSuspend);
-        emit AccountSuspended(_userToSuspend);
-    }
-
-    function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
-        address from = _ownerOf(tokenId);
-        if (from != address(0) && suspendedUsers[from]) {
-            revert InvalidAction("User suspended");
-            revert InvalidAction("User suspended");
-        }
-        if (to != address(0) && suspendedUsers[to]) {
-            revert InvalidAction("User suspended");
-            revert InvalidAction("User suspended");
-        }
-        return super._update(to, tokenId, auth);
-    }
-
-
-    function withdrawFundsOwner()
-
-    function withdrawFundsOwner()
-        external
-        onlyOwner
-    { 
-        uint256 amount = ownerBalance;
-        if (amount == 0) revert NotFundsToWithdrawOwner(msg.sender, "No funds available for withdrawal");
         
-        ownerBalance = 0;
+        uint256 amountToOwner = (eventra.ticketPrice * OWNER_COMMISSION) / 100;
 
-        (bool ok,) = msg.sender.call{ value: amount }("");
-        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing owner funds");
-    }
-    { 
-        uint256 amount = ownerBalance;
-        if (amount == 0) revert NotFundsToWithdrawOwner(msg.sender, "No funds available for withdrawal");
-        
-        ownerBalance = 0;
-
-        (bool ok,) = msg.sender.call{ value: amount }("");
-        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing owner funds");
-    }
-
-    //TERMINAR RESELLS
-    // resell price is the price to pay for the buyer. IT IS NOT THE PRICE THE TICKET OWNER IS GOING TO GET (because of royalties)
-    function putTicketInResell (uint256 tokenId, uint256 resellPrice) external onlyUser(msg.sender){
-        Ticket storage ticket = tickets[tokenId];
-        if (ticket.numberOfOwners == 0) revert TicketNotFound("This ticket does not exist");
-        if (ticket.ticketUser != msg.sender) revert Unauthorized("This ticket does not belong to you");
-
-        if(ticketResellPrice[tokenId] != 0) revert TicketAlreadyInResell(tokenId);
-
-        if(resellPrice == 0) revert InvalidArgument("Resell Price must be > 0");
-
-        if(ticket.ticketState != TicketState.Active) revert Unauthorized("The ticket is not active");
-
-        Event storage ev = events[ticket.eventId];
-        if(ev.eventState == EventState.Canceled || ev.eventState == EventState.Expired || ev.eventState == EventState.Finished) {
-            revert InvalidEventState();
+        if (msg.value != eventra.ticketPrice + amountToOwner) {
+            revert InvalidAmount(msg.value, eventra.ticketPrice + amountToOwner);
         }
 
-        if (ticket.numberOfOwners == ev.maxNumberOfOwners) revert Unauthorized("You can't transfer the Ticket more. It reached the maximum number of owners.");
-
-        ticket.ticketState = TicketState.inResell;
-        ticketResellPrice[tokenId] = resellPrice;
-        ticketsInResell.push(tokenId);
-
-        emit TicketInResell(tokenId, resellPrice);
-    }
-
-    function removeTicketFromResell(uint256 tokenId) external onlyUser(msg.sender) {
-        Ticket storage ticket = tickets[tokenId];
-        if (ticket.numberOfOwners == 0) revert TicketNotFound("This ticket does not exist");
-        if (ticket.ticketUser != msg.sender) revert Unauthorized("This ticket does not belong to you");
-        if (ticket.ticketState != TicketState.inResell) revert InvalidTicketState();
-
-        ticket.ticketState = TicketState.Active;
-        ticketResellPrice[tokenId] = 0;
-
-        bool ok = deleteTicketFromResell(tokenId);
-        if (!ok) revert TicketNotFound("Ticket not found in resell list");
-
-        emit TicketRemovedFromResell(tokenId);
-    }
-
-    // Aux function that deletes ticket _ticketId from the array ticketsInResell
-    function deleteTicketFromResell(uint256 _ticketId) internal returns (bool) {
-        uint256 len = ticketsInResell.length;
-        for (uint256 i = 0; i < len; i++) {
-            if (ticketsInResell[i] == _ticketId) {
-                ticketsInResell[i] = ticketsInResell[len - 1];
-                ticketsInResell.pop();
-                return true;
-            }
+        if (userEventTickets[msg.sender][_eventId] == eventra.maxTicketsPerAddress) {
+            revert InvalidAction("You reached the max number of tickets you can buy for this event.");
         }
-        return false;
+
+        uint256 tokenId = nextTokenId;
+        nextTokenId++;
+
+        tickets[tokenId] =
+            Ticket({ eventId: _eventId, ticketUser: msg.sender, numberOfOwners: 1, ticketState: TicketState.Active });
+
+        eventTickets[_eventId].push(tokenId);
+        userTickets[msg.sender].push(tokenId);
+        userTicketIndex[tokenId] = userTickets[msg.sender].length - 1;
+        userEventTickets[msg.sender][_eventId] += 1;
+        eventra.ticketsSold += 1;
+
+        if (eventra.ticketsSold == eventra.totalTicketNumber) {
+            eventra.eventState = EventState.SoldOut;
+            emit EventSoldOut(_eventId, eventra.eventName);
+        }
+
+        eventCompanyBalance[eventra.organizer] += msg.value - amountToOwner;
+        eventCompanyBalance[owner()] += amountToOwner;
+
+        _safeMint(msg.sender, tokenId);
+
+        emit TicketSold(_eventId, tokenId, msg.sender, eventra.ticketPrice);
     }
 
-    function buyTicketFromResell(uint256 tokenId) external payable onlyUser(msg.sender) {
-        Ticket storage ticket = tickets[tokenId];
-        if (ticket.numberOfOwners == 0) revert TicketNotFound("This ticket does not exist");
-        if (ticket.ticketState != TicketState.inResell) revert InvalidTicketState();
 
-        uint256 resellPrice = ticketResellPrice[tokenId];
-        if (resellPrice == 0) revert InvalidTicketState();
+
+    function buyTicketFromResell(uint256 _tokenId) external payable onlyUser(msg.sender) onlyActivedEvent(tickets[_tokenId].eventId) {
+        Ticket storage ticket = tickets[_tokenId];
+        if (ticket.numberOfOwners == 0) revert TickectError(_tokenId, "This ticket does not exist");
+        if (ticket.ticketState != TicketState.inResell) revert TickectError(_tokenId, "Ticket is not in resell");
+
+        uint256 resellPrice = ticketResellPrice[_tokenId];
+        if (resellPrice == 0) revert InvalidArgument("Invalid ticket price");
 
         address seller = ticket.ticketUser;
-        if (seller == msg.sender) revert Unauthorized("You can't buy your own ticket");
+        if (seller == msg.sender) revert TickectError(_tokenId, "You can't buy your own ticket");
 
         if (msg.value != resellPrice) revert InvalidAmount(msg.value, resellPrice);
 
         Event storage ev = events[ticket.eventId];
-        if (
-            ev.eventState == EventState.Canceled || ev.eventState == EventState.Expired
-                || ev.eventState == EventState.Finished
-        ) {
-            revert InvalidEventState();
-        }
-        if (block.timestamp >= ev.eventDate) revert EventFinished(ticket.eventId);
 
-        if (checkNumberOfTicketsOfUserForOneEvent(ticket.eventId, msg.sender) == ev.maxTicketsPerAddress) {
-            revert Unauthorized("You reached the max number of tickets you can buy for this event.");
+        if (userEventTickets[msg.sender][ticket.eventId] == ev.maxTicketsPerAddress) {
+            revert TickectError(_tokenId, "You reached the max number of tickets you can buy for this event.");
         }
 
         if (ticket.numberOfOwners >= ev.maxNumberOfOwners) {
-            revert InvalidAmountOfTicketOwners();
+            revert TickectError(_tokenId, "Ticket reached the maximum number of owners.");
         }
 
         uint256 royalty = (resellPrice * ev.ticketRoyalty) / 100;
@@ -673,24 +491,197 @@ contract EventraContract is ERC721, Ownable {
         ticket.ticketUser = msg.sender;
         ticket.numberOfOwners += 1;
         ticket.ticketState = TicketState.Active;
-        ticketResellPrice[tokenId] = 0;
+        ticketResellPrice[_tokenId] = 0;
 
-        bool ok = deleteTicketFromResell(tokenId);
-        if (!ok) revert TicketNotFound("Ticket not found in resell list");
+        bool ok = _deleteTicketFromResell(_tokenId);
+        if (!ok) revert TickectError(_tokenId, "Ticket not found in resell list");
 
-        bool ok2 = deleteTicketFromUser(seller, tokenId);
-        if (!ok2) revert TicketTransferFailed();
-        userTickets[msg.sender].push(tokenId);
+        bool ok2 = _deleteTicketFromUser(seller, _tokenId);
+        if (!ok2) revert TickectError(_tokenId, "Error deleting ticket from user");
+        userTickets[msg.sender].push(_tokenId);
 
         eventCompanyBalance[ev.organizer] += royalty;
 
         (bool sent,) = seller.call{ value: amountToSeller }("");
-        if (!sent) revert TransferFailed(seller, amountToSeller);
+        if (!sent) revert TransferFailed(seller, amountToSeller, "Error transferring funds to seller");
 
-        _safeTransfer(seller, msg.sender, tokenId);
+        _safeTransfer(seller, msg.sender, _tokenId);
 
-        emit TicketSold(ticket.eventId, tokenId, msg.sender, uint96(resellPrice));
+        emit TicketSold(ticket.eventId, _tokenId, msg.sender, uint96(resellPrice));
     }
 
+
+
+    function transferTicket(address _to, uint256 _ticketId) external onlyUser(msg.sender) onlyUser(_to) onlyActivedEvent(tickets[_ticketId].eventId) {
+
+        Ticket storage ticket = tickets[_ticketId];
+        if (ticket.ticketUser != msg.sender) revert Unauthorized("Wrong user");
+        if (userEventTickets[_to][ticket.eventId] == events[ticket.eventId].maxTicketsPerAddress) {
+            revert TicketTransferFailed(_to, _ticketId, "Destination reached the max number of tickets it can get for this event.");
+        }
+        if (ticket.ticketState != TicketState.Active) {
+            revert TickectError(_ticketId, "Ticket is not active");
+        }
+
+        Event storage ev = events[ticket.eventId];
+
+        if (ticket.numberOfOwners >= ev.maxNumberOfOwners) {
+            revert TicketTransferFailed(_to, _ticketId, "Max number of owners reached for this ticket");
+        }
+        ticket.numberOfOwners += 1;
+        tickets[_ticketId].ticketUser = _to;
+
+        bool ok = _deleteTicketFromUser(msg.sender, _ticketId);
+        if (!ok) revert TicketTransferFailed(_to, _ticketId, "Error deleting ticket from user");
+        userTickets[_to].push(_ticketId);
+        userTicketIndex[_ticketId] = userTickets[_to].length - 1;
+        userEventTickets[msg.sender][ticket.eventId] -= 1;
+        _safeTransfer(msg.sender, _to, _ticketId);
+    }
+
+
+
+    function putTicketInResell (uint256 _tokenId, uint256 _resellPrice) external onlyUser(msg.sender) onlyActivedEvent(tickets[_tokenId].eventId) {
+        Ticket storage ticket = tickets[_tokenId];
+        if (ticket.numberOfOwners == 0) revert TickectError(_tokenId, "This ticket does not exist");
+        if (ticket.ticketUser != msg.sender) revert TickectError(_tokenId, "This ticket does not belong to you");
+
+        if(ticketResellPrice[_tokenId] != 0) revert TickectError(_tokenId, "Ticket already in resell");
+
+        if(_resellPrice == 0) revert InvalidArgument("Resell Price must be > 0");
+
+        if(ticket.ticketState != TicketState.Active) revert TickectError(_tokenId, "The ticket is not active");
+
+        Event storage ev = events[ticket.eventId];
+
+        if (ticket.numberOfOwners == ev.maxNumberOfOwners) revert TickectError(_tokenId, "You can't transfer the Ticket more. It reached the maximum number of owners.");
+
+        ticket.ticketState = TicketState.inResell;
+        ticketResellPrice[_tokenId] = _resellPrice;
+        ticketsInResell.push(_tokenId);
+        resellTicketIndex[_tokenId] = ticketsInResell.length - 1;
+
+        emit TicketInResell(_tokenId, _resellPrice);
+    }
+
+
+
+    function removeTicketFromResell(uint256 _tokenId) external onlyUser(msg.sender) {
+        Ticket storage ticket = tickets[_tokenId];
+        if (ticket.numberOfOwners == 0) revert TickectError(_tokenId, "This ticket does not exist");
+        if (ticket.ticketUser != msg.sender) revert TickectError(_tokenId, "This ticket does not belong to you");
+        if (ticket.ticketState != TicketState.inResell) revert TickectError(_tokenId, "Ticket is not in resell");
+
+
+        ticket.ticketState = TicketState.Active;
+        ticketResellPrice[_tokenId] = 0;
+
+        bool ok = _deleteTicketFromResell(_tokenId);
+        if (!ok) revert TickectError(_tokenId, "Ticket not found in resell list");
+
+        emit TicketRemovedFromResell(_tokenId);
+    }
+
+    
+
+    function withdrawUserFunds(uint256 _ticketId) external onlyUser(msg.sender) { 
+        Ticket storage ticket = tickets[_ticketId];
+
+        if (ticket.ticketState != TicketState.Cancelled) {
+            revert TickectError(_ticketId, "Ticket not cancelled");
+        }
+
+        uint256 amount = events[ticket.eventId].ticketPrice;
+        if (pendingRefunds[msg.sender] == 0) revert NotFundsToWithdraw(msg.sender, _ticketId, "No funds available for withdrawal");
+
+        ticket.ticketState = TicketState.Reimbursed;
+        pendingRefunds[msg.sender] -= amount;
+
+        (bool ok,) = msg.sender.call{ value: amount }("");
+        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing event funds");
+
+        emit TicketFundsWithdrawn(_ticketId, "Reimbursed ticket", amount);
+    }
+
+
+
+    function withdrawCompanyFunds(uint256 _eventId) 
+        external 
+        eventExists(_eventId) 
+        onlyCompany(msg.sender) 
+    {
+        Event storage eventra = events[_eventId];
+        if (block.timestamp < eventra.eventDate + CANCEL_DEAD_LINE) {
+            revert EventError(_eventId, "Event not finished yet");
+        }
+
+        uint256 amount = eventCompanyBalance[msg.sender];
+        if (amount == 0) revert NotFundsToWithdraw(msg.sender, _eventId, "No funds available for withdrawal");
+
+        eventra.eventState = EventState.Finished;
+        eventCompanyBalance[msg.sender] = 0;
+
+        (bool ok,) = msg.sender.call{ value: amount }("");
+        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing event funds");
+
+        emit EventFundsWithdrawn(_eventId, eventra.eventName, amount);
+    }
+
+
+
+    function withdrawOwnerFunds()
+        external
+        onlyOwner
+    { 
+        uint256 amount = eventCompanyBalance[owner()];
+        if (amount == 0) revert NotFundsToWithdrawOwner(msg.sender, "No funds available for withdrawal");
+        
+        eventCompanyBalance[owner()] = 0;
+
+        (bool ok,) = msg.sender.call{ value: amount }("");
+        if (!ok) revert TransferFailed(msg.sender, amount, "Error withdrawing owner funds");
+    }
+
+
+
+    function suspendAccount(address _userToSuspend) external onlyOwner {
+        if (_userToSuspend == address(0)) {
+            revert InvalidArgument("User not found");
+        }
+        if (!users[_userToSuspend]) revert InvalidAction("User not registered");
+        users[_userToSuspend] = false;
+        suspendedUsers[_userToSuspend] = true;
+
+        emit AccountSuspended(_userToSuspend);
+    }
+
+
+
     receive() external payable { }
+
+    ////////////////////////////
+    ///  Frontend Functions  ///
+    ////////////////////////////
+
+    function getAllUserTickets() external view onlyUser(msg.sender) returns (uint256[] memory) {
+        return userTickets[msg.sender];
+    }
+
+    function getTicket(uint256 _tokenId) external view onlyUser(msg.sender) returns (Ticket memory) {
+        return tickets[_tokenId];
+    }
+
+    function getAllEvents() external view returns (uint256[] memory) {
+        return eventsIds;
+    }
+
+    function getEvent(uint256 _eventId) external view returns (Event memory) {
+        return events[_eventId];
+    }
+
+    function getTicketsInResell() external view returns (uint256[] memory) {
+        return ticketsInResell;
+    }
+
+    
 }
