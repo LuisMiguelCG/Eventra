@@ -24,6 +24,8 @@ contract EventraTests is Test {
     event EventSoldOut(uint256 indexed eventId, string indexed eventName);
     event TicketSold(uint256 indexed eventId, uint256 indexed tokenId, address indexed buyer, uint96 price);
     event AccountSuspended(address indexed userSuspended);
+    event TicketInResell(uint256 indexed ticketId, uint256 ticketPrice);
+    event TicketRemovedFromResell(uint256 indexed ticketId);
     error OwnableUnauthorizedAccount(address account);
 
     string internal testCompanyName = "TEST COMPANY NAME";
@@ -38,8 +40,13 @@ contract EventraTests is Test {
     uint8 internal testMaxTicketsPerAddress = 5;
     uint8 internal testMaxNumberOfOwners = 3;
 
+    uint256 internal constant TEST_COMMISSION = 5;
+    uint256 internal totalBuyPrice;
+
     function setUp() public {
-        eventra = new EventraContract(owner);
+        eventra = new EventraContract(owner, TEST_COMMISSION);
+
+        totalBuyPrice = uint256(testTicketPrice) + (uint256(testTicketPrice) * TEST_COMMISSION) / 100;
 
         vm.deal(buyer, 10 ether);
         vm.deal(buyer2, 10 ether);
@@ -405,7 +412,7 @@ contract EventraTests is Test {
         emit TicketSold(1, 1, buyer, testTicketPrice);
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         assertEq(eventra.eventTickets(1, 0), 1);
 
@@ -414,9 +421,9 @@ contract EventraTests is Test {
         (,,,,,,,,,,, uint32 ticketsSold,,,) = eventra.events(1);
         assertEq(ticketsSold, 1);
 
-        (,,,,,,,,,, uint256 eventFunds,,,,) = eventra.events(1);
-
-        assertEq(eventFunds, 0.1 ether);
+        uint256 commission = (uint256(testTicketPrice) * TEST_COMMISSION) / 100;
+        assertEq(eventra.eventCompanyBalance(eventCompany), uint256(testTicketPrice));
+        assertEq(eventra.eventCompanyBalance(owner), commission);
 
         (uint256 ticketEventId, address ticketUser,, EventraContract.TicketState ticketState) = eventra.tickets(1);
         assertEq(ticketEventId, 1);
@@ -433,7 +440,7 @@ contract EventraTests is Test {
         vm.warp(testStartSellDate);
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.InvalidAmount.selector);
-        eventra.buyTicket{ value: testTicketPrice - 1 wei }(1);
+        eventra.buyTicket{ value: totalBuyPrice - 1 wei }(1);
     }
 
     function test_buyTicketWrongAmountMore() public {
@@ -443,7 +450,7 @@ contract EventraTests is Test {
         vm.warp(testStartSellDate);
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.InvalidAmount.selector);
-        eventra.buyTicket{ value: testTicketPrice + 1 wei }(1);
+        eventra.buyTicket{ value: totalBuyPrice + 1 wei }(1);
     }
 
     function test_buyTicketWrongEventId() public {
@@ -452,7 +459,7 @@ contract EventraTests is Test {
         vm.warp(testStartSellDate);
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.EventNotFound.selector);
-        eventra.buyTicket{ value: testTicketPrice }(100);
+        eventra.buyTicket{ value: totalBuyPrice }(100);
     }
 
     function test_buyTicketSalesClosed() public {
@@ -462,7 +469,7 @@ contract EventraTests is Test {
         vm.warp(block.timestamp);
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.SalesClosed.selector);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
     }
 
     function test_buyTicketSoldOut() public {
@@ -486,16 +493,16 @@ contract EventraTests is Test {
 
         vm.warp(testEndSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
         vm.stopPrank();
 
         vm.prank(buyer2);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
         vm.stopPrank();
 
         vm.prank(buyer3);
         vm.expectPartialRevert(EventraContract.EventIsSoldOut.selector);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
     }
 
     function test_buyTicketAfterEndSellDate() public {
@@ -516,7 +523,7 @@ contract EventraTests is Test {
         vm.warp(testEventDate);
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.EventFinished.selector);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
     }
 
     /// Tests Transfer Ticket ///
@@ -527,7 +534,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         (uint256 eventId, address ticketUser, uint8 numberOfOwners, EventraContract.TicketState ticketState) =
             eventra.tickets(1);
@@ -571,7 +578,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.Unauthorized.selector);
@@ -584,7 +591,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(buyer2);
         vm.expectPartialRevert(EventraContract.Unauthorized.selector);
@@ -599,11 +606,11 @@ contract EventraTests is Test {
 
         for (uint8 i = 0; i < testMaxTicketsPerAddress; i++) {
             vm.prank(buyer2);
-            eventra.buyTicket{ value: testTicketPrice }(1);
+            eventra.buyTicket{ value: totalBuyPrice }(1);
         }
 
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         uint256 buyerTokenId = uint256(testMaxTicketsPerAddress) + 1;
 
@@ -618,7 +625,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(eventCompany);
         eventra.cancelEvent(1);
@@ -634,7 +641,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.warp(testEventDate);
         vm.prank(eventCompany);
@@ -651,7 +658,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         assertEq(eventra.ownerOf(1), buyer);
         assertEq(eventra.balanceOf(buyer), 1);
@@ -671,7 +678,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         assertEq(eventra.userTickets(buyer, 0), 1);
 
@@ -690,7 +697,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(buyer);
         eventra.transferTicket(buyer2, 1);
@@ -811,9 +818,9 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
         vm.prank(buyer2);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         (,,,,,,,,,,,,,, EventraContract.EventState stateBefore) = eventra.events(1);
         assertEq(uint256(stateBefore), uint256(EventraContract.EventState.SoldOut));
@@ -841,7 +848,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(eventCompany);
         eventra.cancelEvent(1);
@@ -862,7 +869,7 @@ contract EventraTests is Test {
         vm.warp(startSellDate);
         for (uint256 i; i < 3; i++) {
             vm.prank(buyer);
-            eventra.buyTicket{ value: 0.1 ether }(1);
+            eventra.buyTicket{ value: totalBuyPrice }(1);
         }
 
         (,,,,,,,,,, uint256 eventFunds,,,,) = eventra.events(1);
@@ -894,7 +901,7 @@ contract EventraTests is Test {
         vm.prank(buyer);
         vm.expectPartialRevert(EventraContract.Unauthorized.selector);
 
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
     }
 
     /// Tests suspend account ///
@@ -917,7 +924,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         assertEq(eventra.ownerOf(1), buyer);
         assertEq(eventra.balanceOf(buyer), 1);
@@ -929,7 +936,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(buyer);
         eventra.transferFrom(buyer, buyer2, 1);
@@ -945,7 +952,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(owner);
         eventra.suspendAccount(buyer);
@@ -961,7 +968,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(owner);
         eventra.suspendAccount(buyer2);
@@ -977,7 +984,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(owner);
         eventra.suspendAccount(buyer);
@@ -993,7 +1000,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(owner);
         eventra.suspendAccount(buyer2);
@@ -1009,7 +1016,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(buyer);
         eventra.approve(buyer3, 1);
@@ -1028,7 +1035,7 @@ contract EventraTests is Test {
 
         vm.warp(testStartSellDate);
         vm.prank(buyer);
-        eventra.buyTicket{ value: testTicketPrice }(1);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
 
         vm.prank(owner);
         eventra.suspendAccount(buyer);
@@ -1040,5 +1047,503 @@ contract EventraTests is Test {
         assertEq(eventra.ownerOf(1), buyer);
         assertEq(eventra.balanceOf(buyer), 1);
         assertEq(eventra.balanceOf(buyer2), 0);
+    }
+
+    /// Helpers for resell tests ///
+
+    function _buyTicketAs(address _buyer) internal returns (uint256 tokenId) {
+        vm.prank(_buyer);
+        eventra.buyTicket{ value: totalBuyPrice }(1);
+        tokenId = eventra.nextTokenId() - 1;
+    }
+
+    function _setupActiveSale() internal {
+        _registerAndCreateDefaultEvent();
+        _registerUser();
+        vm.warp(testStartSellDate);
+    }
+
+    /// Tests Constructor ///
+
+    function test_ConstructorSetsOwner() public view {
+        assertEq(eventra.owner(), owner);
+    }
+
+    function test_ConstructorSetsCommission() public view {
+        assertEq(eventra.OWNER_COMMISSION(), TEST_COMMISSION);
+    }
+
+    function test_ConstructorInitializesNextIds() public view {
+        assertEq(eventra.nextEventId(), 1);
+        assertEq(eventra.nextTokenId(), 1);
+    }
+
+    function test_ConstructorERC721Metadata() public view {
+        assertEq(eventra.name(), "Eventra Tickets");
+        assertEq(eventra.symbol(), "EVTR");
+    }
+
+    /// Tests Owner Commission Accounting ///
+
+    function test_BuyTicketAccumulatesOwnerCommission() public {
+        _setupActiveSale();
+
+        _buyTicketAs(buyer);
+        _buyTicketAs(buyer2);
+        _buyTicketAs(buyer3);
+
+        uint256 commissionPerTicket = (uint256(testTicketPrice) * TEST_COMMISSION) / 100;
+        assertEq(eventra.eventCompanyBalance(owner), commissionPerTicket * 3);
+        assertEq(eventra.eventCompanyBalance(eventCompany), uint256(testTicketPrice) * 3);
+    }
+
+    function test_BuyTicketZeroCommission() public {
+        EventraContract zeroCommission = new EventraContract(owner, 0);
+        vm.deal(address(zeroCommission), 100 ether);
+
+        zeroCommission.registerCompany(testCompanyName, eventCompany);
+        vm.prank(eventCompany);
+        zeroCommission.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber,
+            testMaxTicketsPerAddress,
+            testMaxNumberOfOwners
+        );
+
+        vm.prank(buyer);
+        zeroCommission.registerUser();
+
+        vm.warp(testStartSellDate);
+        vm.prank(buyer);
+        zeroCommission.buyTicket{ value: uint256(testTicketPrice) }(1);
+
+        assertEq(zeroCommission.eventCompanyBalance(owner), 0);
+        assertEq(zeroCommission.eventCompanyBalance(eventCompany), uint256(testTicketPrice));
+    }
+
+    /// Tests Register User ///
+
+    function test_RegisterUserHappyPath() public {
+        vm.expectEmit(true, false, false, false);
+        emit UserRegistered(buyer);
+        vm.prank(buyer);
+        eventra.registerUser();
+
+        assertTrue(eventra.users(buyer));
+    }
+
+    function test_RegisterUserSuspendedReverts() public {
+        vm.prank(buyer);
+        eventra.registerUser();
+
+        vm.prank(owner);
+        eventra.suspendAccount(buyer);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.registerUser();
+    }
+
+    /// Tests Register Company ///
+
+    function test_RegisterCompanyHappyPath() public {
+        vm.expectEmit(false, false, false, true);
+        emit EventCompanyRegistered(testCompanyName, eventCompany);
+        eventra.registerCompany(testCompanyName, eventCompany);
+
+        assertTrue(eventra.companies(eventCompany));
+    }
+
+    function test_RegisterCompanyEmptyName() public {
+        vm.expectPartialRevert(EventraContract.InvalidArgument.selector);
+        eventra.registerCompany("", eventCompany);
+    }
+
+    function test_RegisterCompanyZeroAddress() public {
+        vm.expectPartialRevert(EventraContract.InvalidArgument.selector);
+        eventra.registerCompany(testCompanyName, address(0));
+    }
+
+    /// Tests View Functions ///
+
+    function test_GetAllEvents() public {
+        _registerAndCreateDefaultEvent();
+        vm.prank(eventCompany);
+        eventra.createEvent{ value: 1 ether }(
+            testEventName,
+            testEventDescription,
+            testTicketPrice,
+            testStartSellDate,
+            testEndSellDate,
+            testEventDate,
+            testTicketRoyalty,
+            testTotalTicketNumber,
+            testMaxTicketsPerAddress,
+            testMaxNumberOfOwners
+        );
+
+        uint256[] memory ids = eventra.getAllEvents();
+        assertEq(ids.length, 2);
+        assertEq(ids[0], 1);
+        assertEq(ids[1], 2);
+    }
+
+    function test_GetEvent() public {
+        _registerAndCreateDefaultEvent();
+        EventraContract.Event memory ev = eventra.getEvent(1);
+        assertEq(ev.eventName, testEventName);
+        assertEq(ev.organizer, eventCompany);
+        assertEq(ev.ticketPrice, testTicketPrice);
+    }
+
+    function test_GetAllUserTickets() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        uint256[] memory ticketsList = eventra.getAllUserTickets();
+        assertEq(ticketsList.length, 2);
+        assertEq(ticketsList[0], 1);
+        assertEq(ticketsList[1], 2);
+    }
+
+    function test_GetAllUserTicketsNotUserReverts() public {
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        vm.prank(buyer);
+        eventra.getAllUserTickets();
+    }
+
+    function test_GetTicket() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        EventraContract.Ticket memory t = eventra.getTicket(1);
+        assertEq(t.eventId, 1);
+        assertEq(t.ticketUser, buyer);
+        assertEq(t.numberOfOwners, 1);
+        assertEq(uint256(t.ticketState), uint256(EventraContract.TicketState.Active));
+    }
+
+    function test_GetTicketNotUserReverts() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.getTicket(1);
+    }
+
+    /// Tests putTicketInResell ///
+
+    function test_PutTicketInResellHappyPath() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        uint256 resellPrice = 0.2 ether;
+        vm.expectEmit(true, false, false, true);
+        emit TicketInResell(1, resellPrice);
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, resellPrice);
+
+        (,,, EventraContract.TicketState ticketState) = eventra.tickets(1);
+        assertEq(uint256(ticketState), uint256(EventraContract.TicketState.inResell));
+        assertEq(eventra.ticketResellPrice(1), resellPrice);
+        assertEq(eventra.ticketsInResell(0), 1);
+    }
+
+    function test_PutTicketInResellNotUserReverts() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(owner);
+        eventra.suspendAccount(buyer);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.putTicketInResell(1, 0.2 ether);
+    }
+
+    function test_PutTicketInResellTicketDoesNotExist() public {
+        _registerUser();
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.TicketNotFound.selector);
+        eventra.putTicketInResell(999, 0.2 ether);
+    }
+
+    function test_PutTicketInResellNotTicketOwner() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.putTicketInResell(1, 0.2 ether);
+    }
+
+    function test_PutTicketInResellAlreadyInResell() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.TicketAlreadyInResell.selector);
+        eventra.putTicketInResell(1, 0.3 ether);
+    }
+
+    function test_PutTicketInResellZeroPrice() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.InvalidArgument.selector);
+        eventra.putTicketInResell(1, 0);
+    }
+
+    function test_PutTicketInResellEventCanceled() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(eventCompany);
+        eventra.cancelEvent(1);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.InvalidEventState.selector);
+        eventra.putTicketInResell(1, 0.2 ether);
+    }
+
+    function test_PutTicketInResellMaxOwnersReached() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.transferTicket(buyer2, 1);
+        vm.prank(buyer2);
+        eventra.transferTicket(buyer3, 1);
+
+        vm.prank(buyer3);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.putTicketInResell(1, 0.2 ether);
+    }
+
+    /// Tests removeTicketFromResell ///
+
+    function test_RemoveTicketFromResellHappyPath() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.expectEmit(true, false, false, false);
+        emit TicketRemovedFromResell(1);
+        vm.prank(buyer);
+        eventra.removeTicketFromResell(1);
+
+        (,,, EventraContract.TicketState ticketState) = eventra.tickets(1);
+        assertEq(uint256(ticketState), uint256(EventraContract.TicketState.Active));
+        assertEq(eventra.ticketResellPrice(1), 0);
+
+        vm.expectRevert();
+        eventra.ticketsInResell(0);
+    }
+
+    function test_RemoveTicketFromResellNotTicketOwner() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.removeTicketFromResell(1);
+    }
+
+    function test_RemoveTicketFromResellNotInResell() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.InvalidTicketState.selector);
+        eventra.removeTicketFromResell(1);
+    }
+
+    function test_RemoveTicketFromResellTicketDoesNotExist() public {
+        _registerUser();
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.TicketNotFound.selector);
+        eventra.removeTicketFromResell(999);
+    }
+
+    /// Tests buyTicketFromResell ///
+
+    function test_BuyTicketFromResellHappyPath() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        uint256 resellPrice = 0.2 ether;
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, resellPrice);
+
+        uint256 sellerBalanceBefore = buyer.balance;
+        uint256 organizerBalanceBefore = eventra.eventCompanyBalance(eventCompany);
+
+        vm.expectEmit(true, true, true, true);
+        emit TicketSold(1, 1, buyer2, uint96(resellPrice));
+        vm.prank(buyer2);
+        eventra.buyTicketFromResell{ value: resellPrice }(1);
+
+        uint256 royalty = (resellPrice * testTicketRoyalty) / 100;
+        uint256 amountToSeller = resellPrice - royalty;
+
+        assertEq(buyer.balance, sellerBalanceBefore + amountToSeller);
+        assertEq(eventra.eventCompanyBalance(eventCompany), organizerBalanceBefore + royalty);
+
+        (, address ticketUser, uint8 numberOfOwners, EventraContract.TicketState ticketState) = eventra.tickets(1);
+        assertEq(ticketUser, buyer2);
+        assertEq(numberOfOwners, 2);
+        assertEq(uint256(ticketState), uint256(EventraContract.TicketState.Active));
+        assertEq(eventra.ticketResellPrice(1), 0);
+        assertEq(eventra.ownerOf(1), buyer2);
+        assertEq(eventra.userTickets(buyer2, 0), 1);
+
+        vm.expectRevert();
+        eventra.ticketsInResell(0);
+    }
+
+    function test_BuyTicketFromResellTicketDoesNotExist() public {
+        _registerUser();
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.TicketNotFound.selector);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(999);
+    }
+
+    function test_BuyTicketFromResellNotInResell() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.InvalidTicketState.selector);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(1);
+    }
+
+    function test_BuyTicketFromResellSelfBuyReverts() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.prank(buyer);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(1);
+    }
+
+    function test_BuyTicketFromResellWrongAmount() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.InvalidAmount.selector);
+        eventra.buyTicketFromResell{ value: 0.1 ether }(1);
+    }
+
+    function test_BuyTicketFromResellEventCanceled() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.prank(eventCompany);
+        eventra.cancelEvent(1);
+
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.InvalidEventState.selector);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(1);
+    }
+
+    function test_BuyTicketFromResellEventFinished() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+
+        vm.warp(testEventDate);
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.EventFinished.selector);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(1);
+    }
+
+    function test_BuyTicketFromResellBuyerAtMaxTickets() public {
+        _setupActiveSale();
+
+        for (uint8 i = 0; i < testMaxTicketsPerAddress; i++) {
+            _buyTicketAs(buyer2);
+        }
+        _buyTicketAs(buyer);
+
+        uint256 resellTokenId = uint256(testMaxTicketsPerAddress) + 1;
+        vm.prank(buyer);
+        eventra.putTicketInResell(resellTokenId, 0.2 ether);
+
+        vm.prank(buyer2);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(resellTokenId);
+    }
+
+    function test_BuyTicketFromResellMaxOwnersBlocksFurtherTransfer() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, 0.2 ether);
+        vm.prank(buyer2);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(1);
+
+        vm.prank(buyer2);
+        eventra.putTicketInResell(1, 0.2 ether);
+        vm.prank(buyer3);
+        eventra.buyTicketFromResell{ value: 0.2 ether }(1);
+
+        (, address ticketUser, uint8 numberOfOwners,) = eventra.tickets(1);
+        assertEq(ticketUser, buyer3);
+        assertEq(numberOfOwners, 3);
+
+        vm.prank(buyer3);
+        vm.expectPartialRevert(EventraContract.Unauthorized.selector);
+        eventra.putTicketInResell(1, 0.2 ether);
+    }
+
+    function test_BuyTicketFromResellRoyaltyMathExact() public {
+        _setupActiveSale();
+        _buyTicketAs(buyer);
+
+        uint256 resellPrice = 1 ether;
+        vm.prank(buyer);
+        eventra.putTicketInResell(1, resellPrice);
+
+        uint256 organizerBalanceBefore = eventra.eventCompanyBalance(eventCompany);
+        uint256 sellerBalanceBefore = buyer.balance;
+
+        vm.deal(buyer2, 2 ether);
+        vm.prank(buyer2);
+        eventra.buyTicketFromResell{ value: resellPrice }(1);
+
+        uint256 expectedRoyalty = (resellPrice * testTicketRoyalty) / 100;
+        assertEq(eventra.eventCompanyBalance(eventCompany), organizerBalanceBefore + expectedRoyalty);
+        assertEq(buyer.balance, sellerBalanceBefore + (resellPrice - expectedRoyalty));
     }
 }
