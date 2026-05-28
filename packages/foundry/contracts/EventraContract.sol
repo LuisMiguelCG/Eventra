@@ -541,6 +541,9 @@ contract EventraContract is ERC721, Ownable {
             revert TickectError(_ticketId, "Ticket is not active");
         }
 
+        address seller = ticket.ticketUser;
+        if (seller == msg.sender) revert TickectError(_ticketId, "You can't buy your own ticket");
+
         Event storage ev = events[ticket.eventId];
 
         if (ticket.numberOfOwners >= ev.maxNumberOfOwners) {
