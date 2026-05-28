@@ -227,7 +227,6 @@ contract EventraContract is ERC721, Ownable {
         delete userTicketIndex[_ticket]; // para mantener la limpieza
         return true;
         
-        
     }
 
     function _deleteTicketFromResell(uint256 _ticketId) internal returns (bool) {
@@ -235,14 +234,15 @@ contract EventraContract is ERC721, Ownable {
         uint256 len = ticketsInResell.length;
         uint256 ticketIndex = resellTicketIndex[_ticketId];
 
-        if (ticketsInResellIds[ticketIndex] == _ticketId) {
+        if (ticketIndex >= len) return false;
 
-            ticketsInResellIds[ticketIndex] = ticketsInResellIds[len - 1];
-            resellTicketIndex[ticketsInResellIds[len - 1]] = ticketIndex;
-            ticketsInResellIds.pop();
-            return true;
-        }
-        return false;
+        if (ticketsInResellIds[ticketIndex] == _ticketId) return false;
+
+        ticketsInResellIds[ticketIndex] = ticketsInResellIds[len - 1];
+        resellTicketIndex[ticketsInResellIds[len - 1]] = ticketIndex;
+        ticketsInResellIds.pop();
+        return true;
+        
     }
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
