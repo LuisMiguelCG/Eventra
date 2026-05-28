@@ -516,10 +516,10 @@ contract EventraContract is ERC721, Ownable {
 
         eventCompanyBalance[ev.organizer] += royalty;
 
+        _safeTransfer(seller, msg.sender, _tokenId);
+
         (bool sent,) = seller.call{ value: amountToSeller }("");
         if (!sent) revert TransferFailed(seller, amountToSeller, "Error transferring funds to seller");
-
-        _safeTransfer(seller, msg.sender, _tokenId);
 
         emit TicketSold(ticket.eventId, _tokenId, msg.sender, uint96(resellPrice));
     }
