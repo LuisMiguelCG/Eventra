@@ -579,7 +579,7 @@ contract EventraContract is ERC721, Ownable {
 
         Event storage ev = events[ticket.eventId];
 
-        if (ticket.numberOfOwners == ev.maxNumberOfOwners) revert TickectError(_tokenId, "You can't transfer the Ticket more. It reached the maximum number of owners.");
+        if (ticket.numberOfOwners >= ev.maxNumberOfOwners) revert TickectError(_tokenId, "You can't transfer the Ticket more. It reached the maximum number of owners.");
 
         ticket.ticketState = TicketState.inResell;
         ticketResellPrice[_tokenId] = _resellPrice;
