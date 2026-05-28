@@ -241,6 +241,8 @@ contract EventraContract is ERC721, Ownable {
         ticketsInResellIds[ticketIndex] = ticketsInResellIds[len - 1];
         resellTicketIndex[ticketsInResellIds[len - 1]] = ticketIndex;
         ticketsInResellIds.pop();
+
+        delete resellTicketIndex[_ticketId]; // para mantener la limpieza
         return true;
         
     }
