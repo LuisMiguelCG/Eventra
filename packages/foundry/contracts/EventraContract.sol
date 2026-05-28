@@ -215,14 +215,18 @@ contract EventraContract is ERC721, Ownable {
         uint256 len = userList.length;
         uint256 ticketIndex = userTicketIndex[_ticket];
 
-        if (userList[ticketIndex] == _ticket) {
+        // Proteccion contra out of bounds
+        if (ticketIndex >= len) return false;
 
-            userList[ticketIndex] = userList[len - 1];
-            userTicketIndex[userList[len - 1]] = ticketIndex;
-            userList.pop();
-            return true;
-        }
-        return false;
+        if (userList[ticketIndex] == _ticket) return false;
+
+        userList[ticketIndex] = userList[len - 1];
+        userTicketIndex[userList[len - 1]] = ticketIndex;
+        userList.pop();
+
+        delete userTicketIndex[_ticket]; // para mantener la limpieza
+        return true;
+        
     }
 
     function _deleteTicketFromResell(uint256 _ticketId) internal returns (bool) {
@@ -230,14 +234,17 @@ contract EventraContract is ERC721, Ownable {
         uint256 len = ticketsInResell.length;
         uint256 ticketIndex = resellTicketIndex[_ticketId];
 
-        if (ticketsInResellIds[ticketIndex] == _ticketId) {
+        if (ticketIndex >= len) return false;
 
-            ticketsInResellIds[ticketIndex] = ticketsInResellIds[len - 1];
-            resellTicketIndex[ticketsInResellIds[len - 1]] = ticketIndex;
-            ticketsInResellIds.pop();
-            return true;
-        }
-        return false;
+        if (ticketsInResellIds[ticketIndex] == _ticketId) return false;
+
+        ticketsInResellIds[ticketIndex] = ticketsInResellIds[len - 1];
+        resellTicketIndex[ticketsInResellIds[len - 1]] = ticketIndex;
+        ticketsInResellIds.pop();
+
+        delete resellTicketIndex[_ticketId]; // para mantener la limpieza
+        return true;
+        
     }
 
     function _update(address to, uint256 tokenId, address auth) internal override returns (address) {
@@ -431,7 +438,7 @@ contract EventraContract is ERC721, Ownable {
             revert InvalidAmount(msg.value, eventra.ticketPrice + amountToOwner);
         }
 
-        if (userEventTickets[msg.sender][_eventId] == eventra.maxTicketsPerAddress) {
+        if (userEventTickets[msg.sender][_eventId] >= eventra.maxTicketsPerAddress) {
             revert InvalidAction("You reached the max number of tickets you can buy for this event.");
         }
 
@@ -477,6 +484,10 @@ contract EventraContract is ERC721, Ownable {
 
         Event storage ev = events[ticket.eventId];
 
+        if (block.timestamp > ev.endSellDate || block.timestamp < ev.startSellDate) {
+            revert EventError(ev.eventId, "Sales closed");
+        }
+
         if (userEventTickets[msg.sender][ticket.eventId] == ev.maxTicketsPerAddress) {
             revert TickectError(_tokenId, "You reached the max number of tickets you can buy for this event.");
         }
@@ -500,12 +511,19 @@ contract EventraContract is ERC721, Ownable {
         if (!ok2) revert TickectError(_tokenId, "Error deleting ticket from user");
         userTickets[msg.sender].push(_tokenId);
 
+        // actualizamos el indice del nuevo Ticket minteado
+        userTicketIndex[_tokenId] = userTickets[msg.sender].length - 1;
+
+        // actualizamos el numero de tickets que tiene cada usuario para ese evento
+        userEventTickets[seller][ticket.eventId] -= 1;
+        userEventTickets[msg.sender][ticket.eventId] += 1;
+
         eventCompanyBalance[ev.organizer] += royalty;
+
+        _safeTransfer(seller, msg.sender, _tokenId);
 
         (bool sent,) = seller.call{ value: amountToSeller }("");
         if (!sent) revert TransferFailed(seller, amountToSeller, "Error transferring funds to seller");
-
-        _safeTransfer(seller, msg.sender, _tokenId);
 
         emit TicketSold(ticket.eventId, _tokenId, msg.sender, uint96(resellPrice));
     }
@@ -523,6 +541,9 @@ contract EventraContract is ERC721, Ownable {
             revert TickectError(_ticketId, "Ticket is not active");
         }
 
+        address seller = ticket.ticketUser;
+        if (seller == msg.sender) revert TickectError(_ticketId, "You can't buy your own ticket");
+
         Event storage ev = events[ticket.eventId];
 
         if (ticket.numberOfOwners >= ev.maxNumberOfOwners) {
@@ -533,9 +554,13 @@ contract EventraContract is ERC721, Ownable {
 
         bool ok = _deleteTicketFromUser(msg.sender, _ticketId);
         if (!ok) revert TicketTransferFailed(_to, _ticketId, "Error deleting ticket from user");
+
         userTickets[_to].push(_ticketId);
         userTicketIndex[_ticketId] = userTickets[_to].length - 1;
+        userEventTickets[_to][ticket.eventId] += 1;
+
         userEventTickets[msg.sender][ticket.eventId] -= 1;
+        
         _safeTransfer(msg.sender, _to, _ticketId);
     }
 
@@ -554,7 +579,7 @@ contract EventraContract is ERC721, Ownable {
 
         Event storage ev = events[ticket.eventId];
 
-        if (ticket.numberOfOwners == ev.maxNumberOfOwners) revert TickectError(_tokenId, "You can't transfer the Ticket more. It reached the maximum number of owners.");
+        if (ticket.numberOfOwners >= ev.maxNumberOfOwners) revert TickectError(_tokenId, "You can't transfer the Ticket more. It reached the maximum number of owners.");
 
         ticket.ticketState = TicketState.inResell;
         ticketResellPrice[_tokenId] = _resellPrice;
