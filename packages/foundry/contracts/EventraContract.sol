@@ -215,14 +215,17 @@ contract EventraContract is ERC721, Ownable {
         uint256 len = userList.length;
         uint256 ticketIndex = userTicketIndex[_ticket];
 
-        if (userList[ticketIndex] == _ticket) {
+        // Proteccion contra out of bounds
+        if (ticketIndex >= len) return false;
 
-            userList[ticketIndex] = userList[len - 1];
-            userTicketIndex[userList[len - 1]] = ticketIndex;
-            userList.pop();
-            return true;
-        }
-        return false;
+        if (userList[ticketIndex] == _ticket) return false;
+
+        userList[ticketIndex] = userList[len - 1];
+        userTicketIndex[userList[len - 1]] = ticketIndex;
+        userList.pop();
+        return true;
+        
+        
     }
 
     function _deleteTicketFromResell(uint256 _ticketId) internal returns (bool) {
