@@ -507,6 +507,9 @@ contract EventraContract is ERC721, Ownable {
         if (!ok2) revert TickectError(_tokenId, "Error deleting ticket from user");
         userTickets[msg.sender].push(_tokenId);
 
+        // actualizamos el indice del nuevo Ticket minteado
+        userTicketIndex[_tokenId] = userTickets[msg.sender].length - 1;
+
         eventCompanyBalance[ev.organizer] += royalty;
 
         (bool sent,) = seller.call{ value: amountToSeller }("");
