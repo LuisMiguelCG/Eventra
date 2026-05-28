@@ -484,6 +484,10 @@ contract EventraContract is ERC721, Ownable {
 
         Event storage ev = events[ticket.eventId];
 
+        if (block.timestamp > ev.endSellDate || block.timestamp < ev.startSellDate) {
+            revert EventError(ev.eventId, "Sales closed");
+        }
+
         if (userEventTickets[msg.sender][ticket.eventId] == ev.maxTicketsPerAddress) {
             revert TickectError(_tokenId, "You reached the max number of tickets you can buy for this event.");
         }
