@@ -551,9 +551,13 @@ contract EventraContract is ERC721, Ownable {
 
         bool ok = _deleteTicketFromUser(msg.sender, _ticketId);
         if (!ok) revert TicketTransferFailed(_to, _ticketId, "Error deleting ticket from user");
+
         userTickets[_to].push(_ticketId);
         userTicketIndex[_ticketId] = userTickets[_to].length - 1;
+        userEventTickets[_to][ticket.eventId] += 1;
+
         userEventTickets[msg.sender][ticket.eventId] -= 1;
+        
         _safeTransfer(msg.sender, _to, _ticketId);
     }
 
