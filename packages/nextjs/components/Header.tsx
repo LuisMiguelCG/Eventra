@@ -11,6 +11,8 @@ type HeaderMenuLink = {
 
 export const menuLinks: HeaderMenuLink[] = [
   { label: "Inicio", href: "/" },
+  { label: "Eventos", href: "/events" },
+  { label: "Mis tickets", href: "/tickets" },
   { label: "Crear cuenta", href: "/register" },
 ];
 

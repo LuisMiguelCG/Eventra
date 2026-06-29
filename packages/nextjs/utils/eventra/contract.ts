@@ -1,6 +1,5 @@
 import { ethers } from "ethers";
-
-import { EVENTRA_ABI, EVENTRA_ADDRESS, RPC_URL, CHAIN_ID } from "~~/contracts/eventra";
+import { CHAIN_ID, EVENTRA_ABI, EVENTRA_ADDRESS, RPC_URL } from "~~/contracts/eventra";
 
 export const getReadContract = () =>
   new ethers.Contract(EVENTRA_ADDRESS, EVENTRA_ABI, new ethers.JsonRpcProvider(RPC_URL));
@@ -34,7 +33,7 @@ export const connectWallet = async () => {
   if (!eth) throw new Error("Need Metamask");
 
   await eth.request({ method: "eth_requestAccounts" });
-  await ensureChain(eth); 
+  await ensureChain(eth);
 
   const browser = new ethers.BrowserProvider(eth);
   const signer = await browser.getSigner();
@@ -42,10 +41,9 @@ export const connectWallet = async () => {
   return { signer, address: await signer.getAddress() };
 };
 
-export const getWriteContract = (signer: ethers.Signer) =>
-  new ethers.Contract(EVENTRA_ADDRESS, EVENTRA_ABI, signer);
+export const getWriteContract = (signer: ethers.Signer) => new ethers.Contract(EVENTRA_ADDRESS, EVENTRA_ABI, signer);
 
-const ERROR_ES: Record <string, string> = {
+const ERROR_ES: Record<string, string> = {
   "Not Company": "Tu wallet no está registrada como empresa.",
   "Not User": "Tu wallet no está registrada como usuario.",
   "Company already has an event": "Esta empresa ya tiene un evento activo.",
@@ -60,6 +58,17 @@ const ERROR_ES: Record <string, string> = {
   "Event canceled": "El evento ya está cancelado.",
   "Event not finished yet": "El evento aún no ha terminado (espera 1 día tras la fecha).",
   "No funds available for withdrawal": "No hay fondos disponibles para retirar.",
+  "Sales closed": "La venta de entradas no esta abierta.",
+  "Event sold out": "El evento esta agotado.",
+  "You can't buy your own ticket": "No puedes comprar tu propia entrada.",
+  "Ticket is not in resell": "La entrada no esta en reventa.",
+  "Ticket already in resell": "La entrada ya esta en reventa.",
+  "This ticket does not belong to you": "Esta entrada no pertenece a tu wallet.",
+  "Ticket not Canceled": "La entrada no esta cancelada.",
+  "Invalid ticket price": "El precio de la entrada no es valido.",
+  "Resell Price must be > 0": "El precio de reventa debe ser mayor que 0.",
+  "You reached the max number of tickets you can buy for this event.":
+    "Has alcanzado el maximo de entradas para este evento.",
 };
 
 const errorInterface = new ethers.Interface(EVENTRA_ABI);
@@ -82,8 +91,7 @@ export const parseContractError = (err: any): string => {
           name = parsed.name;
           args = Array.from(parsed.args);
         }
-      } catch {
-      }
+      } catch {}
     }
   }
 

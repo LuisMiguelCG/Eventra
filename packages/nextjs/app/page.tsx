@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import type { NextPage } from "next";
-import { ArrowRightStartOnRectangleIcon, PlusIcon, TicketIcon, UserCircleIcon } from "@heroicons/react/24/outline";
+import {
+  ArrowRightStartOnRectangleIcon,
+  PlusIcon,
+  ShoppingBagIcon,
+  TicketIcon,
+  UserCircleIcon,
+} from "@heroicons/react/24/outline";
 import { useWallet } from "~~/hooks/eventra/useWallet";
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
@@ -34,8 +40,22 @@ const Home: NextPage = () => {
             </div>
 
             <Link
-              href="/events/create"
+              href="/events"
               className="mt-5 flex w-full items-center justify-center gap-2 rounded-full bg-[#2bb3ec] py-3 font-semibold text-white shadow-md transition hover:bg-[#1ba5dd]"
+            >
+              <ShoppingBagIcon className="h-5 w-5" />
+              Comprar entradas
+            </Link>
+            <Link
+              href="/tickets"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-[#e5e7eb] bg-white py-3 font-semibold text-[#131a2b] transition hover:bg-[#f5f6f8]"
+            >
+              <TicketIcon className="h-5 w-5" />
+              Mis tickets
+            </Link>
+            <Link
+              href="/events/create"
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-[#e5e7eb] bg-white py-3 font-semibold text-[#131a2b] transition hover:bg-[#f5f6f8]"
             >
               <PlusIcon className="h-5 w-5" />
               Crear evento
@@ -63,8 +83,14 @@ const Home: NextPage = () => {
               Conectar wallet
             </button>
             <Link
-              href="/register"
+              href="/events"
               className="w-full cursor-pointer rounded-full border border-[#2bb3ec] bg-white py-3 text-center font-semibold text-[#2bb3ec] transition hover:bg-[#eaf7fd]"
+            >
+              Ver eventos
+            </Link>
+            <Link
+              href="/register"
+              className="w-full cursor-pointer rounded-full border border-[#e5e7eb] bg-white py-3 text-center font-semibold text-[#131a2b] transition hover:bg-[#f5f6f8]"
             >
               Crear cuenta
             </Link>

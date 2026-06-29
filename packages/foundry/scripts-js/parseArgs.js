@@ -148,14 +148,41 @@ The default account (scaffold-eth-default) can only be used for localhost deploy
   process.exit(0);
 }
 
-// Set environment variables for the make command
-process.env.DEPLOY_SCRIPT = `script/${fileName}`;
-process.env.RPC_URL = network;
+const deployScript = `script/${fileName}`;
+const deployScriptPath = join(__dirname, "..", deployScript);
+
+if (!existsSync(deployScriptPath)) {
+  console.log(`\n❌ Error: Deploy script '${deployScript}' not found`);
+  process.exit(1);
+}
+
 process.env.ETH_KEYSTORE_ACCOUNT = selectedKeystore;
 
-const result = spawnSync("make", ["deploy"], {
+const forgeArgs = [
+  "script",
+  deployScript,
+  "--rpc-url",
+  network,
+  "--broadcast",
+  "--ffi",
+];
+
+if (selectedKeystore) {
+  forgeArgs.push("--account", selectedKeystore);
+}
+
+if (network === "localhost" && selectedKeystore === "scaffold-eth-default") {
+  forgeArgs.push("--password", "localhost");
+}
+
+const result = spawnSync("forge", forgeArgs, {
   stdio: "inherit",
-  shell: true,
+  shell: false,
 });
+
+if (result.error) {
+  console.error("\n❌ Error running forge:", result.error.message);
+  process.exit(1);
+}
 
 process.exit(result.status);

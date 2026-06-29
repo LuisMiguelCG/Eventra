@@ -31,6 +31,8 @@ scroll = "https://rpc.scroll.io"
 pgn = "https://rpc.publicgoods.network"
 pgnTestnet = "https://sepolia.publicgoods.network"
 
+polygonAmoy = "https://rpc-amoy.polygon.technology"
+
 
 localhost = "http://127.0.0.1:8545"
 
