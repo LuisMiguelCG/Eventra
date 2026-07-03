@@ -35,7 +35,6 @@ const TICKET_STATE = ["Activa", "Transferida", "En reventa", "Usada", "Cancelada
 const TicketsPage: NextPage = () => {
   const { address, connect } = useWallet();
   const [tickets, setTickets] = useState<TicketView[] | null>(null);
-  const [resellTickets, setResellTickets] = useState<TicketView[]>([]);
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +53,6 @@ const TicketsPage: NextPage = () => {
       const readContract = getReadContract();
       const getEvent = readContract.getFunction("getEvent");
       const userIds: bigint[] = await userContract.getAllUserTickets();
-      const resellIds: bigint[] = await readContract.getTicketsInResell();
 
       const mapTicket = async (id: bigint): Promise<TicketView> => {
         const ticket = await userContract.getTicket(id);
@@ -74,19 +72,11 @@ const TicketsPage: NextPage = () => {
         };
       };
 
-      const [owned, resell] = await Promise.all([
-        Promise.all(userIds.map(mapTicket)),
-        Promise.all(resellIds.map(mapTicket)),
-      ]);
-
+      const owned = await Promise.all(userIds.map(mapTicket));
       setTickets(owned.sort((a, b) => b.id - a.id));
-      setResellTickets(
-        resell.filter(ticket => ticket.state === 2 && ticket.resellPrice > 0n).sort((a, b) => b.id - a.id),
-      );
     } catch (e) {
       setError(parseContractError(e));
       setTickets([]);
-      setResellTickets([]);
     } finally {
       setLoading(false);
     }
@@ -130,12 +120,6 @@ const TicketsPage: NextPage = () => {
     );
     setResellTicket(null);
     setResellPrice("");
-  };
-
-  const buyResell = (ticket: TicketView) => {
-    runTicketAction(`buy-resell-${ticket.id}`, contract =>
-      contract.buyTicketFromResell(ticket.id, { value: ticket.resellPrice }),
-    );
   };
 
   if (!address) {
@@ -221,34 +205,6 @@ const TicketsPage: NextPage = () => {
           )}
         </section>
 
-        <section className="mt-10">
-          <h2 className="mb-3 text-lg font-bold text-[#131a2b]">Reventa</h2>
-          {resellTickets.length === 0 ? (
-            <div className="rounded-2xl bg-white p-6 text-sm text-[#6b7280] shadow-md">
-              No hay tickets en reventa ahora mismo.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              {resellTickets.map(ticket => (
-                <div key={ticket.id} className="rounded-2xl bg-white p-6 shadow-md">
-                  <TicketHeader ticket={ticket} />
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-[#131a2b]">
-                    <Info label="Precio reventa" value={`${formatEther(ticket.resellPrice)} ETH`} />
-                    <Info label="Evento" value={new Date(ticket.eventDate).toLocaleDateString()} />
-                  </div>
-                  <button
-                    onClick={() => buyResell(ticket)}
-                    disabled={busy === `buy-resell-${ticket.id}`}
-                    className="mt-5 flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#2bb3ec] py-3 text-sm font-semibold text-white shadow-md transition hover:bg-[#1ba5dd] disabled:opacity-60"
-                  >
-                    <ShoppingBagIcon className="h-5 w-5" />
-                    {busy === `buy-resell-${ticket.id}` ? "Comprando..." : "Comprar reventa"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
       </div>
 
       {transferTicket && (
