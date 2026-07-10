@@ -58,12 +58,12 @@ y lo escribe.
 
 ## Demo en vídeo
 
-<video src="docs/demo.mp4" controls width="100%">
+<video src="https://raw.githubusercontent.com/LuisMiguelCG/Eventra/main/docs/demo.mp4" controls width="100%">
   Tu visor de Markdown no puede reproducir el vídeo embebido — descárgalo directamente desde
   <a href="docs/demo.mp4">docs/demo.mp4</a>.
 </video>
 
-> Si GitHub no reproduce el vídeo embebido en tu navegador, descárgalo desde
+> Si el reproductor no carga, descarga el vídeo directamente desde
 > [`docs/demo.mp4`](docs/demo.mp4).
 
 ## Capturas
