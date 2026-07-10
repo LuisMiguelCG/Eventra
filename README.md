@@ -1,6 +1,6 @@
 # Eventra
 
-Monorepo (npm workspaces) con dos partes independientes:
+Monorepo (npm workspaces) con dos partes independientes
 
 - **`packages/foundry`** — Contrato inteligente (`EventraContract`) y sus tests, con **Foundry / Forge**.
 - **`packages/nextjs`** — Frontend **Next.js (App Router)** con **login / register** y **creación de eventos**.
